@@ -28,13 +28,12 @@ test = Program $ Namespace qmain () V.empty decls
     czer = Constructor $ QName ["Main", "Nat"] "Zero"
     pfst = Projection $ QName ["Main", "Nat"] "fst"
     psnd = Projection $ QName ["Main", "Nat"] "snd"
-    unk = Nothing
     nil = Struct V.empty
     natD = DData qnat $ PCoProduct $ Map.fromList [(czer, PStruct V.empty), (csuc, Ptr $ Mon natt)]
     idD = DDef qid (Fun natt (Mon natt)) $
          Lam (Binder "n") $
          Case (Variable "n") $ V.fromList
-         [ Branch czer $ Do $ Return $ Con czer nil
+         [ Branch czer $ Split (Variable "n") V.empty $ Do $ Return $ Con czer nil
          , Branch csuc
             $ Do $ Return $ Con csuc $ Var $ Variable "n"
          ]
@@ -68,7 +67,7 @@ test = Program $ Namespace qmain () V.empty decls
           , CoBranch psnd $ Do $ Act $ Call (Apply (CVar $ Variable "x") $ V.singleton (Proj pfst))
           ]
     natt = PCon (TConstructor qnat)
-    pairD = CoData qpair [] [(pfst, Mon natt),(psnd, Mon natt)]
+    pairD = CoData qpair $ NObject $ Map.fromList [(pfst, Mon natt),(psnd, Mon natt)]
     pairt = NCon (TConstructor qpair)
     decls = V.fromList [natD , idD, idD2, idD3,dblD,pairD,swapD]
 

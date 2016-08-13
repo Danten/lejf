@@ -110,16 +110,18 @@ instance (Pretty pf, Pretty nb, Pretty nf) => Pretty (PType pf nb nf) where
 instance (Pretty pf, Pretty nb, Pretty nf) => Pretty (NType pf nb nf) where
   pretty (Fun p n) = pretty p :<%> "->" :<%> pretty n
   pretty (Forall b n) = "forall" :<%> pretty b <> "." :<%> pretty n
+  pretty (NObject xs) = "<" :<%> intersperse " & " (fmap (\(p, x) -> pretty p :<%> "as" :<%> pretty x) (Map.toList xs)) :<%> ">"
   pretty (NCon c) = pretty c
   -- pretty (NCon c ns) = pretty c :<> args ns
   pretty (NVar v) = pretty v
   pretty (Mon p) = "{" :<> pretty p :<> "}"
 
-  useParen (NVar v) = useParen v
-  useParen (NCon _) = False
-  -- useParen (NCon _ as) = not $ null as
   useParen (Fun _ _) = True
   useParen (Forall _ _) = True
+  useParen (NObject _) = False
+  useParen (NCon c) = useParen c
+  -- useParen (NCon _ as) = not $ null as
+  useParen (NVar v) = useParen v
   useParen (Mon _) = False
   {-# INLINE useParen #-}
 
@@ -280,15 +282,7 @@ instance Pretty ModuleOps where
 instance (Pretty nb, Pretty pf, Pretty nf, Pretty pb, Eq f, Convert b f, Pretty b,Pretty f, Convert nb nf)
   => Pretty (Decl pb pf nb nf b f) where
   pretty (DData name ty) = "data" :<%> pretty name :<%> "=" :<%> pretty ty :$$ ""
-  pretty (CoData name vars projs) = Group 2 $
-    "codata" :<%> pretty name :<%>
-     (if null vars
-         then "where"
-         else intersperse "," (fmap pretty vars) :<%> "where"
-     ) :$$
-     foldr (:$$) ""
-       [ pretty p :<%> "is" :<%> pretty nt
-       | (p, nt) <- projs]
+  pretty (CoData name ty) = "codata" :<%> pretty name :<%> "=" :<%> pretty ty :$$ ""
   pretty (Module ns) = prettyNs "module" args ns
   pretty (Template ns) = prettyNs "template" args ns
   pretty (Specialise name temp tybinds _tele ren) =

@@ -28,8 +28,8 @@ newtype TC def pf nb nf bound free a = TC
 type Endo a = a -> a
 
 data Signature def pf nb nf = Signature
-  { conType :: Map TConstructor (PType pf nb nf) -- need to change when we add polymorphism
-  , projType :: Map Projection (TConstructor, NType pf nb nf)
+  { pconType :: Map TConstructor (PType pf nb nf) -- need to change when we add polymorphism
+  , nconType :: Map TConstructor (NType pf nb nf)
   , sigType :: Map def (NType pf nb nf)
   }
 
@@ -70,21 +70,23 @@ data TypeType pf nb nf
   = Positive (PType pf nb nf)
   | PositiveCon TConstructor (PType pf nb nf)
   | Negative (NType pf nb nf)
+  | NegativeCon TConstructor (NType pf nb nf)
 
-data NotInScope def
-  = NIS_Constructor Constructor
+data NotInScope def pf nb nf
+  = NIS_Constructor Constructor (PCoProduct pf nb nf)
   | NIS_TConstructor TConstructor
-  | NIS_Projection Projection
+  | NIS_Projection Projection (NObject pf nb nf)
   | NIS_Def def
 
 data ErrorType def pf nb nf bound free
   = FromMonadFail String
-  | NotInScope (NotInScope def)
+  | NotInScope (NotInScope def pf nb nf)
   | ConstructorIsOfWrongType Constructor (PCoProduct pf nb nf)
   | StructArityMisMatch (Vector (Val def pf nb nf bound free)) (Vector (PType pf nb nf))
+  | StructBoundArityMisMatch (Vector bound) (Vector (PType pf nb nf))
   | ShouldBeButIsA (ProgType def pf nb nf bound free) Text (TypeType pf nb nf)
   | PushArgumentToNoFun (Val def pf nb nf bound free) (TypeType pf nb nf)
-  | ProjNotNCon Projection (NType pf nb nf)
+  | ProjArgumentToNoObject Projection (TypeType pf nb nf)
   | InferedDon'tMatchChecked (ProgType def pf nb nf bound free)
         (TypeType pf nb nf)
         (TypeType pf nb nf)
@@ -133,17 +135,13 @@ lookupContext f = do
 
 lookupConType :: Constructor -> PCoProduct pf nb nf -> TC def pf nb nf b f (PType pf nb nf)
 lookupConType c mapping = case Map.lookup c mapping of
-  Nothing -> abort $ ConstructorIsOfWrongType c mapping
+  Nothing -> abort $ NotInScope (NIS_Constructor c mapping)
   Just p  -> pure p
 
-lookupProjType :: Projection -> TConstructor -> TC def pf nb nf bound free (NType pf nb nf)
-lookupProjType p d = do
-  ctx <- ask
-  case Map.lookup p (projType . sig $ ctx) of
-    Nothing -> abort $ NotInScope (NIS_Projection p)
-    Just (d', n) | d == d' -> pure n
-                 | otherwise -> abort $ InferedDon'tMatchChecked (PT_Proj p) (Negative $ NCon d')
-                                          (Negative $ NCon d)
+lookupProjType :: Projection -> NObject pf nb nf -> TC def pf nb nf bound free (NType pf nb nf)
+lookupProjType p mapping = case Map.lookup p mapping of
+    Nothing -> abort $ NotInScope (NIS_Projection p mapping)
+    Just n -> pure n
 
 lookupDef :: (Ord def) => def -> TC def pf nb nf bound free (NType pf nb nf)
 lookupDef n = do
@@ -167,12 +165,36 @@ unpackPCoProduct (PCoProduct x) _ = pure x
 unpackPCoProduct (PCon d) err = do
   -- this should continue to expand as long as it doesn't see the same data constructor
   -- but it doesn't currently
-  env <- reader (conType . sig)
+  env <- reader (pconType . sig)
   case Map.lookup d env of
     Nothing -> abort $ NotInScope (NIS_TConstructor d)
     Just (PCoProduct x) -> pure x
     Just p -> abort $ err (PositiveCon d p)
 unpackPCoProduct p err = abort $ err (Positive p)
+
+unpackPStruct :: PType pf nb nf -> (TypeType pf nb nf -> ErrorType def pf nb nf b f) -> TC def pf nb nf b f (PStruct pf nb nf)
+unpackPStruct (PStruct x) _ = pure x
+unpackPStruct (PCon d) err = do
+  -- this should continue to expand as long as it doesn't see the same data constructor
+  -- but it doesn't currently
+  env <- reader (pconType . sig)
+  case Map.lookup d env of
+    Nothing -> abort $ NotInScope (NIS_TConstructor d)
+    Just (PStruct x) -> pure x
+    Just p -> abort $ err (PositiveCon d p)
+unpackPStruct p err = abort $ err (Positive p)
+
+unpackNObject :: NType pf nb nf -> (TypeType pf nb nf -> ErrorType def pf nb nf b f) -> TC def pf nb nf b f (NObject pf nb nf)
+unpackNObject (NObject x) _err = pure x
+unpackNObject (NCon d) err = do
+  -- this should continue to expand as long as it doesn't see the same data constructor
+  -- but it doesn't currently
+  env <- reader (nconType . sig)
+  case Map.lookup d env of
+    Nothing -> abort $ NotInScope (NIS_TConstructor d)
+    Just (NObject x) -> pure x
+    Just n -> abort $ err (NegativeCon d n)
+unpackNObject n err = abort $ err (Negative n)
 
 unpackFunType :: NType pf nb nf -> (TypeType pf nb nf -> ErrorType def pf nb nf b f) -> TC def pf nb nf b f (PType pf nb nf, NType pf nb nf)
 unpackFunType (Fun p n) _ = pure (p, n)
@@ -221,8 +243,9 @@ tcArg (Push v) n_orig = do
   (p, n) <- unpackFunType n_orig $ PushArgumentToNoFun v
   tcVal v p
   pure n
-tcArg (Proj p) (NCon d) = lookupProjType p d
-tcArg (Proj p) n = abort $ ProjNotNCon p n
+tcArg (Proj p) n_orig = do
+  mapping <- unpackNObject n_orig $ ProjArgumentToNoObject p
+  lookupProjType p mapping
 tcArg (Type m) n_orig = do
   (b, n) <- unpackForallType n_orig undefined
   pure $ substNTypeOne (convert b) m n
@@ -276,11 +299,11 @@ tcTerm :: (Ord free, Convert bound free,Ord defs, Eq pf, Eq nb, Eq nf, Convert n
 tcTerm t@(Lam b t') n_orig = do
   (p, n) <- unpackFunType n_orig $ ShouldBeButIsA (PT_Term t) "function"
   local (addTele $ V.singleton (b,p)) $ tcTerm t' n
-tcTerm (New bs) (NCon c) = do
-  for_ bs $ \ (CoBranch p t) -> do
-    n <- lookupProjType p c
-    tcTerm t n
-tcTerm t@(New {}) n = abort $ ShouldBeButIsA (PT_Term t) "object" (Negative n)
+tcTerm t@(New bs) n_orig = do
+  mapping <- unpackNObject n_orig $ ShouldBeButIsA (PT_Term t) "object"
+  for_ bs $ \ (CoBranch p t') -> do
+    n <- lookupProjType p mapping
+    tcTerm t' n
 tcTerm (Do r) n = tcMonad r n
 tcTerm (Case x bs) n = do
   p_orig <- lookupContext x
@@ -288,6 +311,12 @@ tcTerm (Case x bs) n = do
   for_ bs $ \ (Branch c t) -> do
     p <- lookupConType c mapping
     local (updateContext x p) $ tcTerm t n
+tcTerm (Split x bs t') n = do
+  p_orig <- lookupContext x
+  struct <- unpackPStruct p_orig (flip ShouldBeButIsA "struct" $ PT_Var x)
+  if V.length bs == V.length struct
+    then local (addTele $ V.zip bs struct) (tcTerm t' n)
+    else abort $ StructBoundArityMisMatch bs struct
 tcTerm (Derefence v t) n = do
   p <- lookupContext v
   case p of
@@ -302,7 +331,7 @@ tcDecl :: (Ord free , Eq pf, Eq nb, Eq nf, Convert bound free, Convert nb nf)
        => Decl pb pf nb nf bound free -> TC QName pf nb nf bound free ()
 tcDecl (DDef n nt t) = local (\e -> e { nameOfTerm = n}) $ tcTerm t nt -- we should check that nt makes sense
 tcDecl (DData _ _) = pure ()
-tcDecl (CoData _ _ _) = pure ()
+tcDecl (CoData _ _) = pure ()
 
 tcNameSpace :: (Ord free, Convert bound free, Convert nb nf, Eq pf, Eq nb, Eq nf)
             => (a -> Endo (Env QName pf nb nf free)) -> NameSpace a pb pf nb nf bound free -> TC QName pf nb nf bound free ()
@@ -320,9 +349,7 @@ tcProgram (Program ns) = tcNameSpace (const id) ns
 collectDecl :: (Ord free) => Decl pb pf nb nf bound free -> Signature QName pf nb nf
 collectDecl (DData n cs) = Signature (Map.singleton (TConstructor n) cs) mempty mempty
 collectDecl (DDef n nt _) = Signature mempty mempty (Map.singleton n nt)
-collectDecl (CoData n _ ps) = Signature mempty (Map.fromList . map change $ toList ps) mempty
-  where
-    change (p, ty) = (p, (TConstructor n, ty))
+collectDecl (CoData n ty) = Signature mempty (Map.singleton (TConstructor n) ty) mempty
 
 
 collectNameSpace :: (Ord free) => NameSpace a pb pf nb nf bound free -> Signature QName pf nb nf

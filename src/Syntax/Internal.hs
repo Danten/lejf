@@ -17,12 +17,16 @@ the point is that `t : Mon P'
 can always be evaluated to a `Return p'
 
 -}
+
+type NObject pf nb nf = Map Projection (NType pf nb nf)
+
 data NType pf nb nf
   = Fun (PType pf nb nf) (NType pf nb nf)
     -- ^ Functions, so far not dependent
   | Forall nb (NType pf nb nf)
   | NVar nf
   | NCon TConstructor -- [NType pf nb nf]
+  | NObject (NObject pf nb nf)
   | Mon (PType pf nb nf)
   deriving (Show, Eq)
 

@@ -18,7 +18,7 @@ data WhereClause pb pf nb nf bound free = WhereClause (Maybe QName) (Vector (Dec
 -- missing import statement
 data Decl pb pf nb nf bound free
   = DData QName (PType pf nb nf) -- [(Constructor, Maybe (PType pf nb nf))]
-  | CoData QName [nb] [(Projection, NType pf nb nf)]
+  | CoData QName (NType pf nb nf)
   | DDef QName (NType pf nb nf) (Term QName pf nb nf bound free)
   | Template (NameSpace (Vector pb) pb pf nb nf bound free)
   | Module (NameSpace (Vector nb) pb pf nb nf bound free)
