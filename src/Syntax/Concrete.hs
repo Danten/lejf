@@ -5,39 +5,36 @@ import Data.Vector
 import Syntax.Common
 import Syntax.Internal
 
-newtype Program bound free = Program (NoTNameSpace bound free)
+newtype Program pb pf nb nf bound free = Program (NameSpace () pb pf nb nf bound free)
 
-
-type TypNameSpace = NameSpace (Vector Binder)
-type NoTNameSpace = NameSpace ()
-
-data NameSpace tybinds bound free
-  = Namespace QName tybinds (Vector (bound, PType bound free)) (Vector (Decl bound free))
+data NameSpace tybinds pb pf nb nf bound free
+  = Namespace QName tybinds (Vector (bound, PType pf nb nf)) (Vector (Decl pb pf nb nf bound free))
   deriving (Show)
 
-data WhereClause bound free = WhereClause (Maybe QName) (Vector (Decl bound free))
+-- Currently not used
+data WhereClause pb pf nb nf bound free = WhereClause (Maybe QName) (Vector (Decl pb pf nb nf bound free))
   deriving (Show)
 
 -- missing import statement
-data Decl bound free
-  = DData QName [bound] [(Constructor, [PType bound free])]
-  | CoData QName [bound] [(Projection, NType bound free)]
-  | DDef QName (NType bound free) (Term (WhereClause bound free) QName bound free)
-  | Template (TypNameSpace bound free)
-  | Module (TypNameSpace bound free)
-  | Specialise QName {- = -} QName (Vector (PType bound free)) (Vector (Val QName bound free)) ModuleOps
-  | ModuleApply QName {- = -} QName (Vector (NType bound free)) (Vector (Val QName bound free)) ModuleOps
-  | ModuleClosure QName (Vector (bound, Val QName bound free, PType bound free)) (Vector (Decl bound free))
+data Decl pb pf nb nf bound free
+  = DData QName (PType pf nb nf) -- [(Constructor, Maybe (PType pf nb nf))]
+  | CoData QName [nb] [(Projection, NType pf nb nf)]
+  | DDef QName (NType pf nb nf) (Term QName pf nb nf bound free)
+  | Template (NameSpace (Vector pb) pb pf nb nf bound free)
+  | Module (NameSpace (Vector nb) pb pf nb nf bound free)
+  | Specialise QName {- = -} QName (Vector (PType pf nb nf)) (Vector (Val QName pf nb nf bound free)) ModuleOps
+  -- | ModuleApply QName {- = -} QName (Vector (NType pf nb nf)) (Vector (Val QName pf nb nf bound free)) ModuleOps
+  -- | ModuleClosure QName (Vector (bound, Val QName pf nb nf bound free, PType pf nb nf)) (Vector (Decl pb pf nb nf bound free))
   -- ^ This is the result of Specialise
   -- One can think of this as a new module (no telescope) where all terms
   -- have `With`-cuts
-  | Open QName ModuleOps
+  -- | Open QName ModuleOps
   -- should we add something for an alias?
   deriving (Show)
 
 -- public and private modifiers missing
 data ModuleOps
-  = ModuleOps Using Renaming ModuleName
+  = ModuleOps Using Renaming
   deriving (Show)
 
 type ModuleName = Maybe QName
@@ -47,8 +44,6 @@ data Using
    -- ^ Using lists only the names we want
   | Except (Vector QName)
    -- ^ Everything except these
-  | All
-   -- ^ Everything, could be Except []
   deriving (Show)
 
 -- rename (f,g) means that what was called f in previous module is called g here

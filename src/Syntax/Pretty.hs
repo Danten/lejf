@@ -1,12 +1,13 @@
 {-# Language OverloadedStrings #-}
 module Syntax.Pretty where
 
-import qualified Data.Vector as Vector
-import Data.Vector (Vector)
 
+import qualified Data.Map as Map
+import Data.String (IsString,fromString)
 import qualified Data.Text as Text
 import Data.Text (Text)
-import Data.String (IsString,fromString)
+import qualified Data.Vector as Vector
+import Data.Vector (Vector)
 
 import Syntax.Concrete
 import Syntax.Internal
@@ -16,7 +17,7 @@ import Syntax.Common
 (<>) = mappend
 
 data Doc = Atom Text | Group Int Doc | Doc :$$ Doc
-         | Doc :<%> Doc | Doc :<> Doc
+         | Doc :<%> Doc | Doc :<%%> Doc | Doc :<> Doc
 
 instance IsString Doc where
   fromString = Atom . fromString
@@ -25,8 +26,9 @@ instance Monoid Doc where
   mempty = ""
   mappend = (:<>)
 
+type PrettyT a = a -> Doc
 class Pretty a where
-  pretty :: a -> Doc
+  pretty :: PrettyT a
 
   useParen :: a -> Bool
 
@@ -34,10 +36,17 @@ prettyParen :: Pretty a => a -> Doc
 prettyParen x | useParen x = "(" <> pretty x <> ")"
               | otherwise  = pretty x
 
-prettyMany :: Pretty a => Doc -> [a] -> Doc
-prettyMany _ [] = Atom ""
-prettyMany _ [x] = pretty x
-prettyMany sep (x : xs) = pretty x :<> sep :<> prettyMany sep xs
+
+-- MAYBE REMOVE??
+intersperse :: Doc -> [Doc] -> Doc
+intersperse _ [] = Atom ""
+intersperse _ [x] = x
+intersperse sep (x : xs) = x :<> sep :<> intersperse sep xs
+
+instance Pretty Int where
+  pretty = Atom . Text.pack . show
+
+  useParen _ = False
 
 instance Pretty QName where
   pretty (QName xs name) = name' -- foldr (\x rs -> Atom x :<> "." :<> rs) name' xs
@@ -60,6 +69,11 @@ instance Pretty Constructor where
   useParen _ = False
   {-# INLINE useParen #-}
 
+instance Pretty TConstructor where
+  pretty (TConstructor x) = pretty x
+  useParen _ = False
+  {-# INLINE useParen #-}
+
 instance Pretty Projection where
   pretty (Projection p) = pretty p
   useParen _ = False
@@ -70,28 +84,43 @@ instance Pretty a => Pretty (Vector a) where
   useParen x = Vector.length x > 1
   {-# INLINE useParen #-}
 
-instance (Pretty a, Pretty b) => Pretty (PType a b) where
-  pretty (PVar v) = pretty v
-  pretty (PCon c as) = pretty c :<> args as
-  pretty (Ptr n) = "Ptr" :<%> prettyParen n
+instance Pretty TLit where
+  pretty TInt = "Int"
+  pretty TString = "String"
 
-  useParen (PVar _) = False
-  useParen (PCon _ as) = not $ null as
-  useParen (Ptr _) = True
+  useParen _ = False
   {-# INLINE useParen #-}
 
-instance (Pretty a, Pretty b) => Pretty (NType a b) where
+instance (Pretty pf, Pretty nb, Pretty nf) => Pretty (PType pf nb nf) where
+  pretty (PVar v) = pretty v
+  pretty (PLit l) = pretty l
+  pretty (PCon c) = pretty c -- :<> args as
+  pretty (PCoProduct xs) = "[" :<%> intersperse " | "  (fmap (\(c, x) -> pretty c :<%> ":" :<%> pretty x) (Map.toList xs)) :<%> "]"
+  pretty (PStruct xs) = "(" :<> intersperse ", " (Vector.toList $ fmap pretty xs) :<> ")"
+  pretty (Ptr n) = "Ptr" :<%> prettyParen n
+
+  useParen (PVar{}) = False
+  useParen (PLit l) = useParen l
+  useParen (PCon{}) = False -- not $ null as
+  useParen (PCoProduct{}) = False
+  useParen (PStruct{}) = False
+  useParen (Ptr{}) = True
+  {-# INLINE useParen #-}
+
+instance (Pretty pf, Pretty nb, Pretty nf) => Pretty (NType pf nb nf) where
   pretty (Fun p n) = pretty p :<%> "->" :<%> pretty n
   pretty (Forall b n) = "forall" :<%> pretty b <> "." :<%> pretty n
-  pretty (NCon c ns) = pretty c :<> args ns
+  pretty (NCon c) = pretty c
+  -- pretty (NCon c ns) = pretty c :<> args ns
   pretty (NVar v) = pretty v
-  pretty (Lazy p) = "Lazy" :<%> prettyParen p
+  pretty (Mon p) = "{" :<> pretty p :<> "}"
 
   useParen (NVar v) = useParen v
-  useParen (NCon _ as) = not $ null as
+  useParen (NCon _) = False
+  -- useParen (NCon _ as) = not $ null as
   useParen (Fun _ _) = True
   useParen (Forall _ _) = True
-  useParen (Lazy _) = True
+  useParen (Mon _) = False
   {-# INLINE useParen #-}
 
 instance (Pretty a, Pretty b) => Pretty (CallFun a b) where
@@ -102,25 +131,38 @@ instance (Pretty a, Pretty b) => Pretty (CallFun a b) where
   useParen (CVar x) = useParen x
   {-# INLINE useParen #-}
 
-instance (Pretty a,Pretty b, Pretty c) => Pretty (Call a b c) where
+instance (Pretty d, Pretty pf, Pretty f, Pretty nb, Pretty nf) => Pretty (Call d pf nb nf b f) where
   pretty (Apply c as) = pretty c :<> args as
 
   useParen (Apply _ as) = not $ null as
   {-# INLINE useParen #-}
 
-instance (Pretty a, Pretty b, Pretty c) => Pretty (Val a b c) where
-  pretty (Var x) = pretty x
-  pretty (Con c xs) = pretty c :<> args xs
-  pretty (Thunk ct) = "Thunk{" :<> pretty ct :<> "}"
+instance Pretty Literal where
+  pretty (LInt x) = pretty x
+  pretty (LStr x) = "\"" <> Atom x <> "\""
 
-  useParen (Var x) = useParen x
-  useParen (Con _ xs) = not $ null xs
-  useParen (Thunk _) = False
+  useParen _ = False
   {-# INLINE useParen #-}
 
-instance (Pretty a, Pretty b, Pretty c) => Pretty (Arg a b c) where
+instance (Pretty f, Pretty d, Pretty pf, Pretty nb, Pretty nf) => Pretty (Val d pf nb nf b f) where
+  pretty (Var x) = pretty x
+  pretty (Lit l) = pretty l
+  pretty (Con c xs) = pretty c :<%> prettyParen xs
+  pretty (Struct xs) = "(" :<> args xs :<> ")"
+  pretty (Thunk ct) = "Thunk{" :<> pretty ct :<> "}"
+  pretty (ThunkVal ct) = "$" :<> prettyParen ct
+
+  useParen (Var x) = useParen x
+  useParen (Lit l) = useParen l
+  useParen (Con _ _) = True
+  useParen (Struct xs) = not $ null xs
+  useParen (Thunk _) = False
+  useParen (ThunkVal _) = False
+  {-# INLINE useParen #-}
+
+instance (Pretty d, Pretty pf, Pretty f, Pretty nb, Pretty nf) => Pretty (Arg d pf nb nf b f) where
   pretty (Push x) = pretty x
-  pretty (Proj p) = "." :<> pretty p
+  pretty (Proj p) = "." :<> prettyParen p
   pretty (Type n) = "#" :<> prettyParen n
 
   useParen (Push x) = useParen x
@@ -128,78 +170,143 @@ instance (Pretty a, Pretty b, Pretty c) => Pretty (Arg a b c) where
   useParen (Type n) = useParen n
   {-# INLINE useParen #-}
 
-instance (Pretty a, Pretty b, Convert a b, Eq b) => Pretty (WhereClause a b) where
+{-
+instance (Pretty nb, Pretty pf, Pretty nf, Pretty pb, Eq f, Convert b f,Pretty f) => Pretty (WhereClause pb pf nb nf b f) where
   pretty (WhereClause _name decls) = "where" :$$ pretty decls
 
   useParen _ = True -- ever used?
   {-# INLINE useParen #-}
+-}
 
 -- we should have a way of only putting parentheses on things that need it
 args :: (Traversable t, Pretty a) => t a -> Doc
 args = foldr (\a as -> " " :<> prettyParen a :<> as) ""
 
--- Args contains no thunks, the thunks could potentially be dot-patterns
-equations :: (Pretty n, Pretty d, Pretty b, Pretty f, Convert b f, Eq f) => QName -> Args n b f -> Term d n b f -> Doc
-equations name = go
+instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty f) => Pretty (Act d pf nb nf b f) where
+  pretty (PutStrLn s) = "PutStrLn" :<%> pretty s
+  pretty (Call c) = pretty c
+  pretty ReadLn = "ReadLn"
+
+  useParen (PutStrLn _) = True
+  useParen (Call c) = useParen c
+  useParen ReadLn = False
+
+{-
+instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty f) => Pretty (RHS d pf nb nf b f) where
+  pretty (Call c) = pretty c
+  pretty (Return v) = pretty v
+  pretty (Act a) = pretty a
+
+  useParen (Call c) = useParen c
+  useParen (Return v) = useParen v
+  useParen (Act a) = useParen a
+-}
+
+data Equation d pf nb nf b f
+  = Equation (Call d pf nb nf b f) (CMonad d pf nb nf b f)
+  | EqWith (Call d pf nb nf b f) (Call d pf nb nf b f) (Vector (Equation d pf nb nf b f))
+  | EqLet (Call d pf nb nf b f) (Val d pf nb nf b f) (Vector (Equation d pf nb nf b f))
+
+splitLines :: Vector Doc -> Doc
+splitLines xs | null xs = ""
+              | length xs == 1 = Vector.head xs
+              | otherwise = foldr1 (:$$) xs
+
+equations :: (Eq f, Convert b f, Convert nb nf) => d -> Term d pf nb nf b f -> Vector (Equation d pf nb nf b f)
+equations name = go Vector.empty
   where
+    append xs y = xs <> Vector.singleton y
+    mkCa = Apply (CDef name)
+    prv = Push . Var . convert
 
-  lhs xs = pretty name :<> args xs
+    -- go :: (Eq f, Convert b f) => Args d pf nb nf b f -> Term d pf nb nf b f -> Vector (Equation d pf nb nf b f)
+    go xs (Lam x t) = go (append xs $ prv x) t
+    go xs (TLam x t) = go (append xs $ Type $ NVar $ convert x) t
+    go xs (Do c) = Vector.singleton (Equation (mkCa xs) c)
+    go xs (With v b t) = Vector.singleton $ EqWith (mkCa xs) v $ go (append xs $ prv b) t
+    go xs (Let v b t) = Vector.singleton $ EqLet (mkCa xs) v $ go (append xs $ prv b) t
+    go xs (Derefence v t) = go (fmap (substValOne v (ThunkVal $ Var $ v)) xs) t
+    go xs (New bs) = bs >>= \ (CoBranch p t) -> go (append xs $ Proj p) t
+    go xs (Split x bs t) = go (fmap (substValOne x (Struct $ fmap (Var . convert) bs)) xs) t
+    go xs (Case x bs) = bs >>= \ (Branch c t) ->
+      let xs' = fmap (substValOne x (Con c (Var x))) xs
+       in go xs' t
 
-  go xs (Lam x t) = go (xs <> Vector.singleton (Push . Var $ convert x)) t
-  go xs (Call ca) = lhs xs :<%> "=" :<%> pretty ca
-  go xs (Return p) = lhs xs :<%> "=" :<%> pretty p
-  go xs (ReturnWhere decls p) = Group 2 $ lhs xs :<%> "=" :<%> Group (-2) (pretty p)
-    :$$ Group 2 (pretty decls)
-  go xs (Force ca b t) = Group 2 $ lhs xs :<%> "with!" :<%> pretty ca :$$
-    go (xs <> Vector.singleton (Push . Var $ convert b)) t
-  go xs (With v b t) = Group 2 $ lhs xs :<%> "with" :<%> pretty v :$$
-    go (xs <> Vector.singleton (Push . Var $ convert b)) t
-  go xs (New bs) = foldr (:$$) "" $ fmap cont bs
+instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty b, Pretty f) => Pretty (CMonad d pf nb nf b f) where
+  pretty (Act a) = pretty a
+  pretty (Return r) = "return" :<%> prettyParen r
+  pretty (Bind a b m) = pretty b :<%> "<-" :<%> pretty a :<> ";" :<%> pretty m
+
+  useParen (Act a) = useParen a
+  useParen (Return _) = True
+  useParen (Bind _ _ _) = True
+
+instance (Pretty d,Pretty pf, Pretty nb, Pretty nf, Pretty b, Pretty f) => Pretty (Equation d pf nb nf b f) where
+  pretty (Equation c r) = pretty c :<%> "=" :<%> "do" :<%> "{" :<%> pretty r :<%> "}"
+  pretty (EqWith ca r eqs) = Group 2 $ pretty ca :<%> "with" :<%> pretty r :$$ splitLines (fmap pretty eqs)
+  pretty (EqLet ca r eqs) = Group 2 $ pretty ca :<%> "let" :<%> pretty r :$$ splitLines (fmap pretty eqs)
+
+  useParen _ = True
+
+instance Pretty Using where
+  pretty (Using vs) = "using" :<%> "(" :<> args vs :<> ")"
+  pretty (Except vs) | null vs   = ""
+                     | otherwise = "hiding" :<%> "(" :<> args vs :<> ")"
+
+  useParen _ = True
+
+instance Pretty Atom where
+  pretty (AtomName n) = pretty n
+  pretty (AtomModule n) = "module" :<%> pretty n
+
+  useParen (AtomName n) = useParen n
+  useParen (AtomModule _) = True
+
+instance Pretty Renaming where
+  pretty (Renaming xs)
+    | null xs   = ""
+    | otherwise = "renaming" :<%>
+        "(" :<> foldr (\ a r -> " " :<> inner a :<> r) "" xs :<> ")"
     where
-      cont (CoBranch p t) = go (xs <> Vector.singleton (Proj p)) t
-  go xs (Case x bs) = foldr (:$$) ""
-    $ fmap cont bs
-    where
-      cont (Branch c bs' t) = go xs' t
-        where xs' = substs x (Con c $ fmap (Var . convert) bs') xs
-  -- b2c (Binder x) = Var $ Variable x
+      inner (atm , n) = pretty atm :<%> "to" :<%> pretty n :<> ";"
 
+  useParen _ = True
 
-instance (Pretty a, Pretty b, Convert a b, Eq b) => Pretty (Decl a b) where
-  pretty (DData name vars consts) = Group 2 $
-    "data" :<%> pretty name :<%>
-       (if null vars
-          then "where"
-          else prettyMany "," vars :<%> "where"
-       ) :$$
-       foldr (:$$) ""
-         [ if null ps
-             then pretty c
-             else pretty c :<%> "of" :<%> prettyMany ", " ps
-         | (c, ps) <- consts]
+instance Pretty ModuleOps where
+  pretty (ModuleOps use ren) = pretty use :<%%> pretty ren
+
+  useParen _ = True
+
+instance (Pretty nb, Pretty pf, Pretty nf, Pretty pb, Eq f, Convert b f, Pretty b,Pretty f, Convert nb nf)
+  => Pretty (Decl pb pf nb nf b f) where
+  pretty (DData name ty) = "data" :<%> pretty name :<%> "=" :<%> pretty ty :$$ ""
   pretty (CoData name vars projs) = Group 2 $
     "codata" :<%> pretty name :<%>
      (if null vars
          then "where"
-         else prettyMany "," vars :<%> "where"
+         else intersperse "," (fmap pretty vars) :<%> "where"
      ) :$$
      foldr (:$$) ""
        [ pretty p :<%> "is" :<%> pretty nt
        | (p, nt) <- projs]
-  pretty (Template (Namespace name vars tele decls)) = Group 2 $
-    "template" :<%> pretty name :<%> args vars :<%> "where" :$$
-     pretty decls
+  pretty (Module ns) = prettyNs "module" args ns
+  pretty (Template ns) = prettyNs "template" args ns
+  pretty (Specialise name temp tybinds _tele ren) =
+    "module" :<%> pretty name :<%> pretty temp :<> args tybinds :<%%> pretty ren
   pretty (DDef name typ ter) =
     pretty name :<%> ":" :<%> pretty typ :$$
-    equations name Vector.empty ter
+      pretty (equations name ter)
 
   useParen _ = True
   {-# INLINE useParen #-}
 
-instance (Pretty a, Pretty b, Convert a b, Eq b) => Pretty (Program a b) where
-  pretty (Program (Namespace name _ _telescope decls)) = Group 2 $
-    "module" :<%> pretty name :<%> "where" :$$
+prettyNs :: (Eq f, Convert b f, Convert nb nf, Pretty b, Pretty f, Pretty pb, Pretty pf, Pretty nb, Pretty nf) => Text -> (tybinds -> Doc) -> PrettyT (NameSpace tybinds pb pf nb nf b f)
+prettyNs modu pArgs (Namespace name tybinds _telescope decls) = Group 2 $
+    Atom modu :<%> pretty name :<> pArgs tybinds :<%> "where" :$$
       pretty decls
+
+instance (Eq f, Convert b f, Pretty b, Pretty f, Pretty pb, Pretty pf, Pretty nb, Pretty nf, Convert nb nf) => Pretty (Program pb pf nb nf b f) where
+  pretty (Program ns) = prettyNs "module" (\ () -> "") ns
 
   useParen _ = True
   {-# INLINE useParen #-}
@@ -209,6 +316,11 @@ toText _ (Atom t) = t
 toText i (Group i' d) = toText (i + i') d
 toText i (d :$$ d') = toText i d <> "\n" <> Text.replicate i " " <> toText i d'
 toText i (d :<%> d') = toText i d <> " " <> toText i d'
+toText i (d :<%%> d') = let pre = toText i d
+                            pos = toText i d'
+  in if " " `Text.isSuffixOf` pre
+     then pre <> pos
+     else pre <> " " <> pos
 toText i (d :<> d') = toText i d <> toText i d'
 
 pprint :: Pretty a => a -> Text
