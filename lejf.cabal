@@ -20,6 +20,7 @@ executable lejf
   build-depends:       base
                      , containers
                      , aeson
+                     , lens
                      , monad-logger
                      , monad-par
                      , mtl

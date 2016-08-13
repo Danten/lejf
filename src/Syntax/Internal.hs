@@ -1,5 +1,7 @@
-{-# Language MultiParamTypeClasses #-}
+{-# Language MultiParamTypeClasses, LambdaCase #-}
 module Syntax.Internal where
+
+import Control.Lens.Prism
 
 import Data.Map (Map)
 import Data.Text(Text)
@@ -20,6 +22,31 @@ can always be evaluated to a `Return p'
 
 type NObject pf nb nf = Map Projection (NType pf nb nf)
 
+_Fun :: Prism' (NType pf nb nf) (PType pf nb nf, NType pf nb nf)
+_Fun = prism' (uncurry Fun) $ \case
+   Fun p n -> Just (p, n)
+   _ -> Nothing
+
+_Forall :: Prism' (NType pf nb nf) (nb, NType pf nb nf)
+_Forall = prism' (uncurry Forall) $ \case
+   Forall p n -> Just (p, n)
+   _ -> Nothing
+
+_NObject :: Prism' (NType pf nb nf) (NObject pf nb nf)
+_NObject = prism' NObject $ \case
+   NObject n -> Just n
+   _ -> Nothing
+
+_NCon :: Prism' (NType pf nb nf) TConstructor
+_NCon = prism' NCon $ \case
+  NCon d -> Just d
+  _ -> Nothing
+
+_Mon :: Prism' (NType pf nb nf) (PType pf nb nf)
+_Mon = prism' Mon $ \case
+  Mon d -> Just d
+  _ -> Nothing
+
 data NType pf nb nf
   = Fun (PType pf nb nf) (NType pf nb nf)
     -- ^ Functions, so far not dependent
@@ -35,6 +62,27 @@ data TLit = TInt | TString
 
 type PCoProduct pf nb nf = Map Constructor (PType pf nb nf)
 type PStruct pf nb nf = Vector (PType pf nb nf)
+
+_PCon :: Prism' (PType pf nb nf) TConstructor
+_PCon = prism' PCon $ \case
+  PCon d -> Just d
+  _ -> Nothing
+
+_PCoProduct :: Prism' (PType pf nb nf) (PCoProduct pf nb nf)
+_PCoProduct = prism' PCoProduct $ \case
+  PCoProduct d -> Just d
+  _ -> Nothing
+
+_PStruct :: Prism' (PType pf nb nf) (PStruct pf nb nf)
+_PStruct = prism' PStruct $ \case
+  PStruct d -> Just d
+  _ -> Nothing
+
+_Ptr :: Prism' (PType pf nb nf) (NType pf nb nf)
+_Ptr = prism' Ptr $ \case
+  Ptr d -> Just d
+  _ -> Nothing
+
 
 data PType pf nb nf
   = PCon TConstructor -- [NType pf nb nf]
@@ -71,8 +119,10 @@ data Term defs pf nb nf bound free
   | Split free (Vector bound) (Term defs pf nb nf bound free)
   | Derefence free (Term defs pf nb nf bound free)
   | New (Vector (CoBranch defs pf nb nf bound free))
-  | With (Call defs pf nb nf bound free) bound (Term defs pf nb nf bound free) -- This allocates on the stack
-  | Let (Val defs pf nb nf bound free) bound (Term defs pf nb nf bound free) -- This allocates on the stack
+  | With (Call defs pf nb nf bound free) bound
+         (Term defs pf nb nf bound free) -- This allocates on the stack
+  | Let (Val defs pf nb nf bound free, PType pf nb nf) bound
+        (Term defs pf nb nf bound free) -- This allocates on the stack
   deriving (Show)
 
 data Branch defs pf nb nf bound free = Branch Constructor (Term defs pf nb nf bound free)

@@ -207,7 +207,8 @@ instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty f) => Pretty (RHS d 
 data Equation d pf nb nf b f
   = Equation (Call d pf nb nf b f) (CMonad d pf nb nf b f)
   | EqWith (Call d pf nb nf b f) (Call d pf nb nf b f) (Vector (Equation d pf nb nf b f))
-  | EqLet (Call d pf nb nf b f) (Val d pf nb nf b f) (Vector (Equation d pf nb nf b f))
+  | EqLet (Call d pf nb nf b f) (Val d pf nb nf b f, PType pf nb nf)
+          (Vector (Equation d pf nb nf b f))
 
 splitLines :: Vector Doc -> Doc
 splitLines xs | null xs = ""
@@ -246,7 +247,9 @@ instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty b, Pretty f) => Pret
 instance (Pretty d,Pretty pf, Pretty nb, Pretty nf, Pretty b, Pretty f) => Pretty (Equation d pf nb nf b f) where
   pretty (Equation c r) = pretty c :<%> "=" :<%> "do" :<%> "{" :<%> pretty r :<%> "}"
   pretty (EqWith ca r eqs) = Group 2 $ pretty ca :<%> "with" :<%> pretty r :$$ splitLines (fmap pretty eqs)
-  pretty (EqLet ca r eqs) = Group 2 $ pretty ca :<%> "let" :<%> pretty r :$$ splitLines (fmap pretty eqs)
+  pretty (EqLet ca (v,p) eqs) = Group 2 $ pretty ca :<%> "let"
+    :<%> pretty v :<%> ":" :<%> pretty p
+    :$$ splitLines (fmap pretty eqs)
 
   useParen _ = True
 

@@ -1,5 +1,9 @@
-{-# language OverloadedStrings #-}
+{-# language OverloadedStrings, RankNTypes #-}
 module Types where
+
+import Control.Lens.Operators
+import Control.Lens.Prism
+import Control.Monad
 
 import Data.Vector (Vector)
 import qualified Data.Vector as V
@@ -13,7 +17,6 @@ import qualified Data.Text.IO as Text
 
 import Data.Foldable
 
-import Control.Monad
 
 import Syntax.Concrete
 import Syntax.Common
@@ -68,25 +71,26 @@ data ProgType def pf nb nf bound free
 
 data TypeType pf nb nf
   = Positive (PType pf nb nf)
-  | PositiveCon TConstructor (PType pf nb nf)
+  | ByPath [TConstructor] (TypeType pf nb nf)
   | Negative (NType pf nb nf)
-  | NegativeCon TConstructor (NType pf nb nf)
 
-data NotInScope def pf nb nf
+data NotInScope def pf nb nf free
   = NIS_Constructor Constructor (PCoProduct pf nb nf)
   | NIS_TConstructor TConstructor
   | NIS_Projection Projection (NObject pf nb nf)
   | NIS_Def def
+  | NIS_Variable free
 
 data ErrorType def pf nb nf bound free
   = FromMonadFail String
-  | NotInScope (NotInScope def pf nb nf)
+  | NotInScope (NotInScope def pf nb nf free)
   | ConstructorIsOfWrongType Constructor (PCoProduct pf nb nf)
   | StructArityMisMatch (Vector (Val def pf nb nf bound free)) (Vector (PType pf nb nf))
   | StructBoundArityMisMatch (Vector bound) (Vector (PType pf nb nf))
   | ShouldBeButIsA (ProgType def pf nb nf bound free) Text (TypeType pf nb nf)
   | PushArgumentToNoFun (Val def pf nb nf bound free) (TypeType pf nb nf)
   | ProjArgumentToNoObject Projection (TypeType pf nb nf)
+  | TConCycle TConstructor [TConstructor]
   | InferedDon'tMatchChecked (ProgType def pf nb nf bound free)
         (TypeType pf nb nf)
         (TypeType pf nb nf)
@@ -123,14 +127,11 @@ reader f = fmap f ask
 abort :: ErrorType def pf nb nf bound free -> TC def pf nb nf bound free a
 abort t = TC $ \ e -> Left $ Error e t
 
-abort' :: String -> TC def pf nb nf bound free a
-abort' = abort . FromMonadFail
-
 lookupContext :: (Ord free) => free -> TC def pf nb nf bound free (PType pf nb nf)
 lookupContext f = do
   ctx <- ask
   case Map.lookup f (context ctx) of
-    Nothing -> abort' "Variable not in scope"
+    Nothing -> abort $ NotInScope (NIS_Variable f)
     Just p  -> pure p
 
 lookupConType :: Constructor -> PCoProduct pf nb nf -> TC def pf nb nf b f (PType pf nb nf)
@@ -147,66 +148,39 @@ lookupDef :: (Ord def) => def -> TC def pf nb nf bound free (NType pf nb nf)
 lookupDef n = do
   ctx <- ask
   case Map.lookup n (sigType . sig $ ctx) of
-    Nothing -> abort $ NotInScope (NIS_Def n)-- "Name, " <> Text.pack (show n) <> ", is not in scope"
+    Nothing -> abort $ NotInScope (NIS_Def n)
     Just m -> pure m
 
 updateContext :: (Ord free) => free -> PType pf nb nf -> Endo (Env def pf nb nf free)
 updateContext f p env = env { context = Map.insert f p (context env)}
 
 addTele :: (Ord free, Convert bound free) => Vector (bound, PType pf nb nf) -> Endo (Env def pf nb nf free)
-addTele tele env | V.null tele = env -- for now we don't support telescopes
+addTele tele env | V.null tele = env
                  | otherwise   = env {context = context env `Map.union` tele'}
   where
     -- tele' :: Map Variable (PType bound free)
     tele' = Map.fromList $ V.toList $ fmap (\(x,p) -> (convert x,p))tele
 
-unpackPCoProduct :: PType pf nb nf -> (TypeType pf nb nf -> ErrorType def pf nb nf b f) -> TC def pf nb nf b f (PCoProduct pf nb nf)
-unpackPCoProduct (PCoProduct x) _ = pure x
-unpackPCoProduct (PCon d) err = do
-  -- this should continue to expand as long as it doesn't see the same data constructor
-  -- but it doesn't currently
-  env <- reader (pconType . sig)
-  case Map.lookup d env of
-    Nothing -> abort $ NotInScope (NIS_TConstructor d)
-    Just (PCoProduct x) -> pure x
-    Just p -> abort $ err (PositiveCon d p)
-unpackPCoProduct p err = abort $ err (Positive p)
+make_unpack :: (ty -> TypeType pf nb nf) -> (Signature def pf nb nf -> Map TConstructor ty) -> Prism' ty TConstructor
+       -> Prism' ty a -> ty -> (TypeType pf nb nf -> ErrorType def pf nb nf b f) -> TC def pf nb nf b f a
+make_unpack tyTy tType priCon pri ty_orig err = do
+  env <- reader (tType . sig)
+  let go path ty | Just d <- ty ^? priCon =
+         if d `elem` path then abort $ TConCycle d path
+         else case Map.lookup d env of
+            Nothing -> abort $ NotInScope (NIS_TConstructor d)
+            Just n -> go (d:path) n
+      go path n | Just x <- n ^? pri = pure x
+                | otherwise = abort $ err (ByPath path $ tyTy n)
+  go [] ty_orig
 
-unpackPStruct :: PType pf nb nf -> (TypeType pf nb nf -> ErrorType def pf nb nf b f) -> TC def pf nb nf b f (PStruct pf nb nf)
-unpackPStruct (PStruct x) _ = pure x
-unpackPStruct (PCon d) err = do
-  -- this should continue to expand as long as it doesn't see the same data constructor
-  -- but it doesn't currently
-  env <- reader (pconType . sig)
-  case Map.lookup d env of
-    Nothing -> abort $ NotInScope (NIS_TConstructor d)
-    Just (PStruct x) -> pure x
-    Just p -> abort $ err (PositiveCon d p)
-unpackPStruct p err = abort $ err (Positive p)
+unpackPos :: Prism' (PType pf nb nf) a -> PType pf nb nf -> (TypeType pf nb nf -> ErrorType def pf nb nf b f)
+  -> TC def pf nb nf b f a
+unpackPos = make_unpack Positive pconType _PCon
 
-unpackNObject :: NType pf nb nf -> (TypeType pf nb nf -> ErrorType def pf nb nf b f) -> TC def pf nb nf b f (NObject pf nb nf)
-unpackNObject (NObject x) _err = pure x
-unpackNObject (NCon d) err = do
-  -- this should continue to expand as long as it doesn't see the same data constructor
-  -- but it doesn't currently
-  env <- reader (nconType . sig)
-  case Map.lookup d env of
-    Nothing -> abort $ NotInScope (NIS_TConstructor d)
-    Just (NObject x) -> pure x
-    Just n -> abort $ err (NegativeCon d n)
-unpackNObject n err = abort $ err (Negative n)
-
-unpackFunType :: NType pf nb nf -> (TypeType pf nb nf -> ErrorType def pf nb nf b f) -> TC def pf nb nf b f (PType pf nb nf, NType pf nb nf)
-unpackFunType (Fun p n) _ = pure (p, n)
-{-
-unpackFunType (NCon d) err =  do
-  env <- reader ()
--}
-unpackFunType n err = abort $ err (Negative n)
-
-unpackForallType :: NType pf nb nf -> (TypeType pf nb nf -> ErrorType def pf nb nf b f)
-  -> TC def pf nb nf b f (nb, NType pf nb nf)
-unpackForallType (Forall b n) _err = pure (b, n)
+unpackNeg :: Prism' (NType pf nb nf) a -> NType pf nb nf -> (TypeType pf nb nf -> ErrorType def pf nb nf b f)
+  -> TC def pf nb nf b f a
+unpackNeg = make_unpack Negative nconType _NCon
 
 
 tcLit :: () => Literal -> PType pf nb nf -> TC defs pf nb nf bound free ()
@@ -222,32 +196,34 @@ tcVal (Var x) p = do
   unless (p == p') $ abort $ InferedDon'tMatchChecked (PT_Var x) (Positive p') (Positive p)
 tcVal (Lit l) p = tcLit l p
 tcVal v@(Con c a) p = do
-  m <- unpackPCoProduct p (flip ShouldBeButIsA "Labeled sum" $ PT_Val v)
+  m <- unpackPos _PCoProduct p (flip ShouldBeButIsA "Labeled sum" $ PT_Val v)
   p' <- lookupConType c m
   tcVal a p'
-tcVal (Thunk ca) (Ptr n) = do
+tcVal v@(Thunk ca) p = do
+  n <- unpackPos _Ptr p $ ShouldBeButIsA (PT_Val v) "pointer"
   n' <- tcAct ca
   unless (n == n') $ abort $ InferedDon'tMatchChecked (PT_Act ca) (Negative n') (Negative n)
-tcVal v@(Thunk _) p = abort $ ShouldBeButIsA (PT_Val v) "pointer" (Positive p)
-tcVal (Struct vs) (PStruct ps)
-   | length vs == length ps
-     = sequence_ (V.zipWith tcVal vs ps)
-   |otherwise = abort $ StructArityMisMatch vs ps
-tcVal v@(Struct _) p = abort $ ShouldBeButIsA (PT_Val v) "struct" (Positive p)
-tcVal (ThunkVal v) (Ptr (Mon p)) = tcVal v p
-tcVal v@(ThunkVal _) p = abort $ ShouldBeButIsA (PT_Val v) "pointer to monadic value" (Positive p)
+tcVal (ThunkVal v) p_orig = do
+  n <- unpackPos _Ptr p_orig $ ShouldBeButIsA (PT_Val v) "pointer to monadic value"
+  p <- unpackNeg _Mon n $ ShouldBeButIsA (PT_Val v) "pointer to monadic value"
+  tcVal v p
+tcVal v@(Struct vs) p = do
+  ps <- unpackPos _PStruct p $ ShouldBeButIsA (PT_Val v) "struct"
+  if length vs == length ps
+    then sequence_ (V.zipWith tcVal vs ps)
+    else abort $ StructArityMisMatch vs ps
 
 tcArg :: (Ord free, Ord defs, Eq pf, Eq nb, Eq nf, Convert nb nf)
       => Arg defs pf nb nf bound free -> NType pf nb nf -> TC defs pf nb nf bound free (NType pf nb nf)
 tcArg (Push v) n_orig = do
-  (p, n) <- unpackFunType n_orig $ PushArgumentToNoFun v
+  (p, n) <- unpackNeg _Fun n_orig $ PushArgumentToNoFun v
   tcVal v p
   pure n
 tcArg (Proj p) n_orig = do
-  mapping <- unpackNObject n_orig $ ProjArgumentToNoObject p
+  mapping <- unpackNeg _NObject n_orig $ ProjArgumentToNoObject p
   lookupProjType p mapping
 tcArg (Type m) n_orig = do
-  (b, n) <- unpackForallType n_orig undefined
+  (b, n) <- unpackNeg _Forall n_orig undefined
   pure $ substNTypeOne (convert b) m n
 
 tcArgs :: (Ord free, Ord defs, Eq pf, Eq nb, Eq nf, Convert nb nf)
@@ -266,17 +242,8 @@ tcCall (Apply (CDef d) xs) = do
   tcArgs xs n
 tcCall (Apply (CVar x) xs) = do
   p <- lookupContext x
-  case p of
-    Ptr n -> tcArgs xs n
-
-  {-
-tcRHS :: (Ord free, Ord defs, Show defs,Eq pf, Eq nb, Eq nf)
-      => RHS defs pf nb nf bound free -> NType pf nb nf -> TC defs pf nb nf free ()
-tcRHS (Return v) (Mon p) = tcVal v p
-tcRHS (Call ca) n = do
-  m <- tcCall ca
-  unless (m == n) $ abort "Call types mismatch"
--}
+  n <- unpackPos _Ptr p $ ShouldBeButIsA (PT_Var x) "pointer"
+  tcArgs xs n
 
 tcAct :: (Ord free, Ord defs, Eq pf, Eq nb, Eq nf, Convert nb nf)
   =>Act defs pf nb nf bound free -> TC defs pf nb nf bound free (NType pf nb nf)
@@ -286,34 +253,42 @@ tcAct (PutStrLn x) = do
   return $ Mon $ PStruct V.empty
 tcAct ReadLn = return $ Mon $ PLit TString
 
-tcMonad :: (Ord free, Ord defs, Eq pf, Eq nb, Eq nf, Convert nb nf)
+tcMonad :: (Ord free, Ord defs, Eq pf, Eq nb, Eq nf, Convert nb nf, Convert bound free)
   => CMonad defs pf nb nf bound free -> NType pf nb nf -> TC defs pf nb nf bound free ()
-tcMonad (Return r) (Mon p) = tcVal r p
-tcMonad t@(Return _) n = abort $ ShouldBeButIsA (PT_Mon t) "monadic" (Negative n)
+tcMonad t@(Return r) n = do
+  p <- unpackNeg _Mon n $ ShouldBeButIsA (PT_Mon t) "monadic"
+  tcVal r p
 tcMonad (Act a) n = do
   n' <- tcAct a
   unless (n == n') $ abort $ InferedDon'tMatchChecked (PT_Act a) (Negative n') (Negative n)
+tcMonad (Bind a b m) n = do
+  n' <- tcAct a
+  p <- unpackNeg _Mon n' $ ShouldBeButIsA (PT_Act a) "monadic"
+  local (addTele $ V.singleton (b,p)) (tcMonad m n)
 
 tcTerm :: (Ord free, Convert bound free,Ord defs, Eq pf, Eq nb, Eq nf, Convert nb nf)
        => Term defs pf nb nf bound free -> NType pf nb nf -> TC defs pf nb nf bound free ()
 tcTerm t@(Lam b t') n_orig = do
-  (p, n) <- unpackFunType n_orig $ ShouldBeButIsA (PT_Term t) "function"
+  (p, n) <- unpackNeg _Fun n_orig $ ShouldBeButIsA (PT_Term t) "function"
   local (addTele $ V.singleton (b,p)) $ tcTerm t' n
+tcTerm t@(TLam _b t') n_orig = do
+  (_bt, n) <- unpackNeg _Forall n_orig $ ShouldBeButIsA (PT_Term t) "forall"
+  tcTerm t' n
 tcTerm t@(New bs) n_orig = do
-  mapping <- unpackNObject n_orig $ ShouldBeButIsA (PT_Term t) "object"
+  mapping <- unpackNeg _NObject n_orig $ ShouldBeButIsA (PT_Term t) "object"
   for_ bs $ \ (CoBranch p t') -> do
     n <- lookupProjType p mapping
     tcTerm t' n
 tcTerm (Do r) n = tcMonad r n
 tcTerm (Case x bs) n = do
   p_orig <- lookupContext x
-  mapping <- unpackPCoProduct p_orig (flip ShouldBeButIsA "labeled sum" $ PT_Var x)
+  mapping <- unpackPos _PCoProduct p_orig (flip ShouldBeButIsA "labeled sum" $ PT_Var x)
   for_ bs $ \ (Branch c t) -> do
     p <- lookupConType c mapping
     local (updateContext x p) $ tcTerm t n
 tcTerm (Split x bs t') n = do
   p_orig <- lookupContext x
-  struct <- unpackPStruct p_orig (flip ShouldBeButIsA "struct" $ PT_Var x)
+  struct <- unpackPos _PStruct p_orig (flip ShouldBeButIsA "struct" $ PT_Var x)
   if V.length bs == V.length struct
     then local (addTele $ V.zip bs struct) (tcTerm t' n)
     else abort $ StructBoundArityMisMatch bs struct
@@ -325,6 +300,9 @@ tcTerm (Derefence v t) n = do
 tcTerm (With ca b t) n = do
   p <- tcCall ca
   local (addTele $ V.singleton (b, Ptr p)) $ tcTerm t n
+tcTerm (Let (v,p) b t) n = do
+  tcVal v p
+  local (addTele $ curry V.singleton b p) (tcTerm t n)
 
 
 tcDecl :: (Ord free , Eq pf, Eq nb, Eq nf, Convert bound free, Convert nb nf)
@@ -332,6 +310,9 @@ tcDecl :: (Ord free , Eq pf, Eq nb, Eq nf, Convert bound free, Convert nb nf)
 tcDecl (DDef n nt t) = local (\e -> e { nameOfTerm = n}) $ tcTerm t nt -- we should check that nt makes sense
 tcDecl (DData _ _) = pure ()
 tcDecl (CoData _ _) = pure ()
+tcDecl (Template ns) = tcNameSpace (flip const) ns
+tcDecl (Module ns) = tcNameSpace (flip const) ns
+tcDecl (Specialise{}) = fail "Not implemented tcDecl:Specialise"
 
 tcNameSpace :: (Ord free, Convert bound free, Convert nb nf, Eq pf, Eq nb, Eq nf)
             => (a -> Endo (Env QName pf nb nf free)) -> NameSpace a pb pf nb nf bound free -> TC QName pf nb nf bound free ()
@@ -346,16 +327,20 @@ tcProgram :: (Ord free, Convert bound free, Convert nb nf
 tcProgram (Program ns) = tcNameSpace (const id) ns
 
 
-collectDecl :: (Ord free) => Decl pb pf nb nf bound free -> Signature QName pf nb nf
+collectDecl :: Decl pb pf nb nf bound free -> Signature QName pf nb nf
 collectDecl (DData n cs) = Signature (Map.singleton (TConstructor n) cs) mempty mempty
 collectDecl (DDef n nt _) = Signature mempty mempty (Map.singleton n nt)
 collectDecl (CoData n ty) = Signature mempty (Map.singleton (TConstructor n) ty) mempty
+collectDecl (Template{}) = mempty
+collectDecl (Module{}) = mempty
+collectDecl (Specialise{}) = mempty
 
 
-collectNameSpace :: (Ord free) => NameSpace a pb pf nb nf bound free -> Signature QName pf nb nf
+
+collectNameSpace :: NameSpace a pb pf nb nf bound free -> Signature QName pf nb nf
 collectNameSpace (Namespace _ _ _ decls) = foldMap collectDecl decls
 
-collectProgram :: (Ord free) => Program pb pf nb nf bound free -> Signature QName pf nb nf
+collectProgram :: Program pb pf nb nf bound free -> Signature QName pf nb nf
 collectProgram (Program ns) = collectNameSpace ns
 
 runTC :: (Ord free, Eq nf, Eq pf, Eq nb, Convert bound free, Convert nb nf
@@ -367,8 +352,9 @@ runTC m = case runTC' (tcProgram m) (Env mempty (collectProgram m) undefined) of
 
 ttText :: (Pretty pf, Pretty nb, Pretty nf) => TypeType pf nb nf -> Text
 ttText (Positive p) = Pretty.pprint p
-ttText (PositiveCon d p) = Pretty.pprint d <> " which expands to " <> Pretty.pprint p
 ttText (Negative n) = Pretty.pprint n
+ttText (ByPath [] t) = ttText t
+ttText (ByPath ds tf) = foldr (\n t -> Pretty.pprint n <> " ~> " <> t) (ttText tf) ds
 
 ptText :: (Pretty def, Pretty pf, Pretty nb, Pretty nf, Pretty b, Pretty f)
        => ProgType def pf nb nf b f -> Text
