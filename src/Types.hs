@@ -1,16 +1,17 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
 module Types where
 
-import qualified Data.Text.IO as Text
+import qualified Data.Text.IO  as Text
 
-import Syntax.Decl (Program)
-import Syntax.Pretty (Pretty)
+import           Syntax.Decl   (Program)
+import           Syntax.Pretty (Pretty)
 
 import qualified Types.Collect as Collect
-import Types.Errors (error2Text)
-import qualified Types.Rules as Rules
-import Types.TC(runTC', Env(Env), nameOfTerm)
+import           Types.Errors  (error2Text)
+import qualified Types.Rules   as Rules
+import           Types.TC      (Env (Env), nameOfTerm, runTC')
 
-import Utils (Convert)
+import           Utils         (Convert)
 
 runTC :: (Ord free, Ord nf, Eq pf, Eq nb, Convert bound free, Convert nb nf
          , Pretty pf, Pretty nb, Pretty nf, Pretty bound, Pretty free)

@@ -1,13 +1,13 @@
-{-# Language LambdaCase #-}
+{-# LANGUAGE LambdaCase #-}
 module Syntax.Internal where
 
-import Control.Lens.Prism
+import           Control.Lens.Prism
 
-import Data.Map (Map)
-import Data.Text(Text)
-import Data.Vector (Vector)
+import           Data.Map           (Map)
+import           Data.Text          (Text)
+import           Data.Vector        (Vector)
 
-import Syntax.Common
+import           Syntax.Common
 
 -- Would like to merge this with NType, but difficult to give a unifying type for Mon
 -- Adding an extra type argument breaks a lot of stuff, and we then need to rethink Subst

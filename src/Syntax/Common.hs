@@ -1,8 +1,8 @@
-{-# language MultiParamTypeClasses #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 module Syntax.Common where
 
-import Data.Text
-import Utils
+import           Data.Text
+import           Utils
 
 newtype Variable = Variable Text deriving (Eq,Ord,Show)
 newtype Binder = Binder Text deriving (Show, Eq)

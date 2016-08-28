@@ -1,19 +1,19 @@
-{-# language OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Types.Errors where
 
-import Data.Vector (Vector)
-import qualified Data.Vector as V
+import           Data.Vector     (Vector)
+import qualified Data.Vector     as V
 
-import Data.Text (Text)
-import qualified Data.Text as Text
+import           Data.Text       (Text)
+import qualified Data.Text       as Text
 
-import Syntax.Common
-import Syntax.Internal
-import Syntax.Pretty (Pretty)
+import           Syntax.Common
+import           Syntax.Internal
+import           Syntax.Pretty   (Pretty)
 
-import qualified Syntax.Pretty as Pretty
+import qualified Syntax.Pretty   as Pretty
 
-import Utils
+import           Utils
 
 data Error env def pf nb nf bound free
   = Error (env def pf nb nf bound free) (ErrorType def pf nb nf bound free)
@@ -66,14 +66,14 @@ ttText (ByPath ds tf) = foldr (\(n,a) t -> Pretty.pprint n <> Pretty.toText 0 (P
 
 ptText :: (Pretty def, Pretty pf, Pretty nb, Pretty nf, Pretty b, Pretty f)
        => ProgType def pf nb nf b f -> Text
-ptText (PT_Act a) = Pretty.pprint a
-ptText (PT_Proj p) = Pretty.pprint p
-ptText (PT_Val v) = Pretty.pprint v
-ptText (PT_Mon m) = Pretty.pprint m
-ptText (PT_Con c) = Pretty.pprint c
-ptText (PT_Def d) = Pretty.pprint d
-ptText (PT_Var x) = Pretty.pprint x
-ptText (PT_Lit l) = Pretty.pprint l
+ptText (PT_Act a)    = Pretty.pprint a
+ptText (PT_Proj p)   = Pretty.pprint p
+ptText (PT_Val v)    = Pretty.pprint v
+ptText (PT_Mon m)    = Pretty.pprint m
+ptText (PT_Con c)    = Pretty.pprint c
+ptText (PT_Def d)    = Pretty.pprint d
+ptText (PT_Var x)    = Pretty.pprint x
+ptText (PT_Lit l)    = Pretty.pprint l
 ptText (PT_Equation) = "!EQUATION!"
 
 nisText :: (Pretty def) => NotInScope def pf nb nf b f-> Text

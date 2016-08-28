@@ -1,6 +1,6 @@
 module Evaluate.Error where
 
-import Data.Text (Text)
+import           Data.Text (Text)
 import qualified Data.Text as Text
 
 data Error

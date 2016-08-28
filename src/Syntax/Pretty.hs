@@ -1,20 +1,21 @@
-{-# Language OverloadedStrings #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings     #-}
 module Syntax.Pretty where
 
 
-import qualified Data.Map as Map
-import Data.String (IsString,fromString)
-import qualified Data.Text as Text
-import Data.Text (Text)
-import qualified Data.Vector as Vector
-import Data.Vector (Vector)
+import qualified Data.Map        as Map
+import           Data.String     (IsString, fromString)
+import           Data.Text       (Text)
+import qualified Data.Text       as Text
+import           Data.Vector     (Vector)
+import qualified Data.Vector     as Vector
 
-import Syntax.Common
-import Syntax.Decl
-import Syntax.Internal
-import Syntax.Subst
+import           Syntax.Common
+import           Syntax.Decl
+import           Syntax.Internal
+import           Syntax.Subst
 
-import Utils
+import           Utils
 
 data Doc = Atom Text | Group Int Doc | Doc :$$ Doc
          | Doc :<%> Doc | Doc :<%%> Doc | Doc :<> Doc
@@ -39,8 +40,8 @@ prettyParen x | useParen x = "(" <> pretty x <> ")"
 
 -- MAYBE REMOVE??
 intersperse :: Doc -> [Doc] -> Doc
-intersperse _ [] = Atom ""
-intersperse _ [x] = x
+intersperse _ []         = Atom ""
+intersperse _ [x]        = x
 intersperse sep (x : xs) = x :<> sep :<> intersperse sep xs
 
 instance Pretty Int where
@@ -85,7 +86,7 @@ instance Pretty a => Pretty (Vector a) where
   {-# INLINE useParen #-}
 
 instance Pretty TLit where
-  pretty TInt = "Int"
+  pretty TInt    = "Int"
   pretty TString = "String"
 
   useParen _ = False
@@ -99,12 +100,12 @@ instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty f) => Pretty (PType 
   pretty (PStruct xs) = "(" :<> intersperse ", " (Vector.toList $ fmap pretty xs) :<> ")"
   pretty (Ptr n) = "Ptr" :<%> prettyParen n
 
-  useParen (PVar{}) = False
-  useParen (PLit l) = useParen l
-  useParen (PCon _ as) =  not $ null as
+  useParen (PVar{})       = False
+  useParen (PLit l)       = useParen l
+  useParen (PCon _ as)    =  not $ null as
   useParen (PCoProduct{}) = False
-  useParen (PStruct{}) = False
-  useParen (Ptr{}) = True
+  useParen (PStruct{})    = False
+  useParen (Ptr{})        = True
   {-# INLINE useParen #-}
 
 instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty f) => Pretty (Kind d pf nb nf b f) where
@@ -114,11 +115,11 @@ instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty f) => Pretty (Kind d
   pretty (KVar v) = pretty v
   pretty (KUniverse) = "Type"
 
-  useParen (KFun _ _) = True
+  useParen (KFun _ _)    = True
   useParen (KForall _ _) = True
-  useParen (KObject _) = False
-  useParen (KVar v) = useParen v
-  useParen (KUniverse) = False
+  useParen (KObject _)   = False
+  useParen (KVar v)      = useParen v
+  useParen (KUniverse)   = False
   {-# INLINE useParen #-}
 
 instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty f) => Pretty (NType d pf nb nf b f) where
@@ -129,12 +130,12 @@ instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty f) => Pretty (NType 
   pretty (NVar v) = pretty v
   pretty (Mon p) = "{" :<> pretty p :<> "}"
 
-  useParen (Fun _ _) = True
+  useParen (Fun _ _)    = True
   useParen (Forall _ _) = True
-  useParen (NObject _) = False
-  useParen (NCon _ as) = not $ null as
-  useParen (NVar v) = useParen v
-  useParen (Mon _) = False
+  useParen (NObject _)  = False
+  useParen (NCon _ as)  = not $ null as
+  useParen (NVar v)     = useParen v
+  useParen (Mon _)      = False
   {-# INLINE useParen #-}
 
 instance (Pretty a, Pretty b) => Pretty (CallFun a b) where
@@ -166,11 +167,11 @@ instance (Pretty f, Pretty d, Pretty pf, Pretty nb, Pretty nf) => Pretty (Val d 
   pretty (Thunk ct) = "Thunk{" :<> pretty ct :<> "}"
   pretty (ThunkVal ct) = "$" :<> prettyParen ct
 
-  useParen (Var x) = useParen x
-  useParen (Lit l) = useParen l
-  useParen (Con _ _) = True
-  useParen (Struct _) = False
-  useParen (Thunk _) = False
+  useParen (Var x)      = useParen x
+  useParen (Lit l)      = useParen l
+  useParen (Con _ _)    = True
+  useParen (Struct _)   = False
+  useParen (Thunk _)    = False
   useParen (ThunkVal _) = False
   {-# INLINE useParen #-}
 
@@ -198,12 +199,12 @@ args = foldr (\a as -> " " :<> prettyParen a :<> as) ""
 
 instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty f) => Pretty (Act d pf nb nf b f) where
   pretty (PutStrLn s) = "PutStrLn" :<%> pretty s
-  pretty (Call c) = pretty c
-  pretty ReadLn = "ReadLn"
+  pretty (Call c)     = pretty c
+  pretty ReadLn       = "ReadLn"
 
   useParen (PutStrLn _) = True
-  useParen (Call c) = useParen c
-  useParen ReadLn = False
+  useParen (Call c)     = useParen c
+  useParen ReadLn       = False
 
 {-
 instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty f) => Pretty (RHS d pf nb nf b f) where
@@ -248,12 +249,12 @@ equations name = go Vector.empty
        in go xs' t
 
 instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty b, Pretty f) => Pretty (CMonad d pf nb nf b f) where
-  pretty (Act a) = pretty a
-  pretty (Return r) = "return" :<%> prettyParen r
+  pretty (Act a)      = pretty a
+  pretty (Return r)   = "return" :<%> prettyParen r
   pretty (Bind a b m) = pretty b :<%> "<-" :<%> pretty a :<> ";" :<%> pretty m
 
-  useParen (Act a) = useParen a
-  useParen (Return _) = True
+  useParen (Act a)      = useParen a
+  useParen (Return _)   = True
   useParen (Bind _ _ _) = True
 
 instance (Pretty mon, Pretty d,Pretty pf, Pretty nb, Pretty nf, Pretty b, Pretty f) => Pretty (Equation mon d pf nb nf b f) where
@@ -273,10 +274,10 @@ instance Pretty Using where
   useParen _ = True
 
 instance Pretty Atom where
-  pretty (AtomName n) = pretty n
+  pretty (AtomName n)   = pretty n
   pretty (AtomModule n) = "module" :<%> pretty n
 
-  useParen (AtomName n) = useParen n
+  useParen (AtomName n)   = useParen n
   useParen (AtomModule _) = True
 
 instance Pretty Renaming where

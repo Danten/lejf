@@ -1,9 +1,9 @@
 module Types.Collect where
 
-import qualified Data.Map as Map
-import Syntax.Common
-import Syntax.Decl
-import Types.TC
+import qualified Data.Map      as Map
+import           Syntax.Common
+import           Syntax.Decl
+import           Types.TC
 
 collectDecl :: Decl pb pf nb nf bound free -> Signature QName pf nb nf bound free
 collectDecl (DData n _k ty) = Signature (Map.singleton (TConstructor n) ty) mempty mempty

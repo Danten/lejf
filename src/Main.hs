@@ -1,17 +1,17 @@
-{-# Language OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Main where
 
-import qualified Data.Map as Map
-import Data.Text()
-import qualified Data.Text.IO as Text
-import Data.Vector as V
+import qualified Data.Map        as Map
+import           Data.Text       ()
+import qualified Data.Text.IO    as Text
+import           Data.Vector     as V
 
-import Syntax.Common
-import Syntax.Decl
-import Syntax.Internal
-import Syntax.Pretty
+import           Syntax.Common
+import           Syntax.Decl
+import           Syntax.Internal
+import           Syntax.Pretty
 
-import Types
+import           Types
 
 test :: Program Binder Variable Binder Variable Binder Variable
 test = Program $ Namespace qmain () V.empty decls

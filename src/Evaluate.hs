@@ -1,22 +1,23 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
 module Evaluate where
 
-import Data.Maybe (fromMaybe)
+import           Data.Maybe      (fromMaybe)
 
-import Data.Text (Text)
+import           Data.Text       (Text)
 
-import qualified Data.Map as Map
+import qualified Data.Map        as Map
 
-import Data.Vector (Vector)
-import qualified Data.Vector as V
+import           Data.Vector     (Vector)
+import qualified Data.Vector     as V
 
-import Evaluate.Error
-import Evaluate.Eval
+import           Evaluate.Error
+import           Evaluate.Eval
 
-import Syntax.Common
-import Syntax.Internal
-import Syntax.Subst
+import           Syntax.Common
+import           Syntax.Internal
+import           Syntax.Subst
 
-import Utils
+import           Utils
 
 pickBranch :: Constructor -> Vector (Branch mon def pf nb nf b f) -> Eval def pf nb nf b f (Term mon def pf nb nf b f)
 pickBranch c bs = do
@@ -56,5 +57,5 @@ evaluateSubst term args = do
 
 runEval :: Eval def pf nb nf b f a -> Either Text a
 runEval (Eval m) = case m (Env Map.empty Map.empty) of
-  Left e -> Left (error2Text e)
+  Left e  -> Left (error2Text e)
   Right x -> Right x

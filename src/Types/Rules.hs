@@ -1,18 +1,19 @@
-{-# language OverloadedStrings #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings     #-}
 module Types.Rules where
 
-import Data.Foldable
-import qualified Data.Vector as V
+import           Data.Foldable
+import qualified Data.Vector     as V
 
-import Syntax.Common
-import Syntax.Decl
-import Syntax.Internal
-import Syntax.Subst
+import           Syntax.Common
+import           Syntax.Decl
+import           Syntax.Internal
+import           Syntax.Subst
 
-import Types.Errors
-import Types.TC
+import           Types.Errors
+import           Types.TC
 
-import Utils
+import           Utils
 
 tcLit :: Literal -> PType defs pf nb nf bound free -> TC defs pf nb nf bound free ()
 tcLit (LInt _) (PLit TInt) = return ()
@@ -141,11 +142,11 @@ tcTerm (Let (v,p) b t) n = do
 
 tcDecl :: (Ord free , Eq pf, Eq nb, Ord nf, Convert bound free, Convert nb nf)
        => Decl pb pf nb nf bound free -> TC QName pf nb nf bound free ()
-tcDecl (DDef n nt t) = local (\e -> e { nameOfTerm = n}) $ tcTerm t nt -- we should check that nt makes sense
-tcDecl (DData{}) = pure ()
-tcDecl (CoData{}) = pure ()
-tcDecl (Template ns) = tcNameSpace (flip const) ns
-tcDecl (Module ns) = tcNameSpace (flip const) ns
+tcDecl (DDef n nt t)  = local (\e -> e { nameOfTerm = n}) $ tcTerm t nt -- we should check that nt makes sense
+tcDecl (DData{})      = pure ()
+tcDecl (CoData{})     = pure ()
+tcDecl (Template ns)  = tcNameSpace (flip const) ns
+tcDecl (Module ns)    = tcNameSpace (flip const) ns
 tcDecl (Specialise{}) = fail "Not implemented tcDecl:Specialise"
 
 tcNameSpace :: (Ord free, Convert bound free, Convert nb nf, Eq pf, Eq nb, Ord nf)

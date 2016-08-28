@@ -1,6 +1,6 @@
 module Syntax.Subst where
 
-import Syntax.Internal
+import           Syntax.Internal
 
 class Subst a where
   subst :: (free -> Val defs pf nb nf' bound free')
@@ -36,30 +36,30 @@ instance Subst Act where
     _ -> error "Erroneous substitution"
 
 instance Subst CMonad where
-  subst sv sn (Act a) = Act $ subst sv sn a
-  subst sv sn (Return p) = Return $ subst sv sn p
+  subst sv sn (Act a)      = Act $ subst sv sn a
+  subst sv sn (Return p)   = Return $ subst sv sn p
   subst sv sn (Bind m b k) = Bind (subst sv sn m) b (subst sv sn k)
 
 instance Subst Val where
-  subst sv _n (Var y) = sv y
-  subst _v _n (Lit l) = Lit l
-  subst sv sn (Con c v) = Con c (subst sv sn v)
-  subst sv sn (Struct xs) = Struct (fmap (subst sv sn) xs)
-  subst sv sn (Thunk r) = Thunk $ subst sv sn r
+  subst sv _n (Var y)      = sv y
+  subst _v _n (Lit l)      = Lit l
+  subst sv sn (Con c v)    = Con c (subst sv sn v)
+  subst sv sn (Struct xs)  = Struct (fmap (subst sv sn) xs)
+  subst sv sn (Thunk r)    = Thunk $ subst sv sn r
   subst sv sn (ThunkVal r) = ThunkVal $ subst sv sn r
 
 instance Subst NType where
-  subst _v sn (NVar x) = sn x
-  subst sv sn (Fun p n) = Fun (subst sv sn p) (subst sv sn n)
+  subst _v sn (NVar x)     = sn x
+  subst sv sn (Fun p n)    = Fun (subst sv sn p) (subst sv sn n)
   subst sv sn (Forall b n) = Forall b (subst sv sn n) -- ?? why does this work ??
-  subst sv sn (NObject o) = NObject (fmap (subst sv sn) o)
-  subst sv sn (NCon c as) = NCon c $ fmap (subst sv sn) as
-  subst sv sn (Mon p)  = Mon (subst sv sn p)
+  subst sv sn (NObject o)  = NObject (fmap (subst sv sn) o)
+  subst sv sn (NCon c as)  = NCon c $ fmap (subst sv sn) as
+  subst sv sn (Mon p)      = Mon (subst sv sn p)
 
 instance Subst PType where
-  subst sv sn (PCon c a) = PCon c $ fmap (subst sv sn) a
-  subst _v _n (PLit l) = PLit l
-  subst _v _n (PVar x) = PVar x
-  subst sv sn (Ptr n)  = Ptr (subst sv sn n)
-  subst sv sn (PStruct c) = PStruct (fmap (subst sv sn) c)
+  subst sv sn (PCon c a)     = PCon c $ fmap (subst sv sn) a
+  subst _v _n (PLit l)       = PLit l
+  subst _v _n (PVar x)       = PVar x
+  subst sv sn (Ptr n)        = Ptr (subst sv sn n)
+  subst sv sn (PStruct c)    = PStruct (fmap (subst sv sn) c)
   subst sv sn (PCoProduct c) = PCoProduct (fmap (subst sv sn) c)

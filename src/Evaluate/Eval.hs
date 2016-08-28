@@ -1,17 +1,18 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
 module Evaluate.Eval where
 
-import Data.Map (Map)
-import qualified Data.Map as Map
+import           Data.Map        (Map)
+import qualified Data.Map        as Map
 
-import Data.Vector (Vector)
-import qualified Data.Vector as V
+import           Data.Vector     (Vector)
+import qualified Data.Vector     as V
 
-import Evaluate.Error
+import           Evaluate.Error
 
-import Syntax.Common
-import Syntax.Internal
+import           Syntax.Common
+import           Syntax.Internal
 
-import Utils
+import           Utils
 
 data Env def pf nb nf b f = Env
   { valEnv :: Map f (Val def pf nb nf b f)
@@ -28,7 +29,7 @@ instance Functor (Eval def pf nb nf b f) where
 instance Applicative (Eval def pf nb nf bound free) where
   pure x = Eval $ const (Right x)
   Eval f <*> Eval m = Eval $ \ e -> case (f e, m e) of
-    (Left xs, _) -> Left xs
+    (Left xs, _)       -> Left xs
     (Right _, Left ys) -> Left ys
     (Right x, Right y) -> Right (x y)
 
@@ -78,4 +79,4 @@ unpackThunkVal f = do
   env <- ask
   case Map.lookup f (valEnv env) of
     Just (ThunkVal v) -> pure v
-    Just (Thunk c) -> error "need to evaluate a call"
+    Just (Thunk c)    -> error "need to evaluate a call"

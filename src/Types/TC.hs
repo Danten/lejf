@@ -1,26 +1,27 @@
-{-# language RankNTypes #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RankNTypes            #-}
 module Types.TC where
 
-import Control.Lens.Operators
-import Control.Lens.Prism
-import Control.Monad (unless)
+import           Control.Lens.Operators
+import           Control.Lens.Prism
+import           Control.Monad          (unless)
 
-import Data.Map (Map)
-import qualified Data.Map as Map
+import           Data.Map               (Map)
+import qualified Data.Map               as Map
 
-import Data.Vector (Vector)
-import qualified Data.Vector as V
+import           Data.Vector            (Vector)
+import qualified Data.Vector            as V
 
-import Evaluate(runEval)
-import qualified Evaluate as Eval
+import           Evaluate               (runEval)
+import qualified Evaluate               as Eval
 
-import Syntax.Common
-import Syntax.Internal
-import Syntax.Subst
+import           Syntax.Common
+import           Syntax.Internal
+import           Syntax.Subst
 
-import Types.Errors
+import           Types.Errors
 
-import Utils
+import           Utils
 
 newtype TC def pf nb nf bound free a = TC
   {runTC' :: Env def pf nb nf bound free
@@ -40,8 +41,8 @@ instance (Ord def) => Monoid (Signature def pf nb nf b f) where
                 (a3 `mappend` b3)
 
 data Env def pf nb nf bound free = Env
-  { context :: Map free (PType def pf nb nf bound free)
-  , sig :: Signature def pf nb nf bound free
+  { context    :: Map free (PType def pf nb nf bound free)
+  , sig        :: Signature def pf nb nf bound free
   , nameOfTerm :: QName
   }
 
@@ -51,7 +52,7 @@ instance Functor (TC def pf nb nf bound free) where
 instance Applicative (TC def pf nb nf bound free) where
   pure x = TC $ const (Right x)
   TC f <*> TC m = TC $ \ e -> case (f e, m e) of
-    (Left xs, _) -> Left xs
+    (Left xs, _)       -> Left xs
     (Right _, Left ys) -> Left ys
     (Right x, Right y) -> Right (x y)
 
@@ -89,14 +90,14 @@ lookupConType c mapping = case Map.lookup c mapping of
 lookupProjType :: Projection -> NObject def pf nb nf bound free -> TC def pf nb nf bound free (NType def pf nb nf bound free)
 lookupProjType p mapping = case Map.lookup p mapping of
     Nothing -> abort $ NotInScope (NIS_Projection p mapping)
-    Just n -> pure n
+    Just n  -> pure n
 
 lookupDef :: (Ord def) => def -> TC def pf nb nf bound free (NType def pf nb nf bound free)
 lookupDef n = do
   ctx <- ask
   case Map.lookup n (sigType . sig $ ctx) of
     Nothing -> abort $ NotInScope (NIS_Def n)
-    Just m -> pure m
+    Just m  -> pure m
 
 updateContext :: (Ord free) => free -> PType def pf nb nf bound free -> Endo (Env def pf nb nf bound free)
 updateContext f p env = env { context = Map.insert f p (context env)}
@@ -112,7 +113,7 @@ evaluateSubst :: (Ord nf, Convert nb nf, Ord f, Convert b f, Subst ty)
   -> Args def pf nb nf b f
   -> TC def pf nb nf b f (ty def pf nb nf b f)
 evaluateSubst t args = case runEval (Eval.evaluateSubst t args) of
-  Left e -> abort $ EvaluationError e
+  Left e  -> abort $ EvaluationError e
   Right x -> pure x
 
 make_unpackSubst :: (Ord nf, Convert nb nf, Ord f, Convert b f, Subst ty)

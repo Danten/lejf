@@ -1,9 +1,9 @@
 module Syntax.Decl where
 
-import Data.Vector
+import           Data.Vector
 
-import Syntax.Common
-import Syntax.Internal
+import           Syntax.Common
+import           Syntax.Internal
 
 newtype Program pb pf nb nf bound free = Program (NameSpace () pb pf nb nf bound free)
 
