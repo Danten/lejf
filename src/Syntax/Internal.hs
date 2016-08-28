@@ -1,4 +1,4 @@
-{-# Language MultiParamTypeClasses, LambdaCase #-}
+{-# Language MultiParamTypeClasses, LambdaCase, TypeSynonymInstances #-}
 module Syntax.Internal where
 
 import Control.Lens.Prism
@@ -10,98 +10,101 @@ import Data.Vector (Vector)
 import Syntax.Common
 
 
-{-
-Two kind of types, NType for computations and PType for Values
 
-Notice that Lambdas are not values by this definition
+-- Would like to merge this with NType, but difficult to give a unifying type for Mon
+-- Adding an extra type argument breaks a lot of stuff, and we then need to rethink Subst
+data Kind def pf nb nf b f
+  = KFun (PType def pf nb nf b f) (Kind def pf nb nf b f)
+  | KForall nb (Kind def pf nb nf b f)
+  | KVar nf
+  | KObject (KObject def pf nb nf b f)
+  | KUniverse
+  deriving (Show, Eq)
 
-the point is that `t : Mon P'
-can always be evaluated to a `Return p'
+type Object = Map Projection
+type KObject def pf nb nf b f = Object (Kind def pf nb nf b f)
+type NObject def pf nb nf b f = Object (NType def pf nb nf b f)
 
--}
-
-type NObject pf nb nf = Map Projection (NType pf nb nf)
-
-_Fun :: Prism' (NType pf nb nf) (PType pf nb nf, NType pf nb nf)
+_Fun :: Prism' (NType d pf nb nf b f) (PType d pf nb nf b f, NType d pf nb nf b f)
 _Fun = prism' (uncurry Fun) $ \case
    Fun p n -> Just (p, n)
    _ -> Nothing
 
-_Forall :: Prism' (NType pf nb nf) (nb, NType pf nb nf)
+_Forall :: Prism' (NType d pf nb nf b f) (nb, NType d pf nb nf b f)
 _Forall = prism' (uncurry Forall) $ \case
    Forall p n -> Just (p, n)
    _ -> Nothing
 
-_NObject :: Prism' (NType pf nb nf) (NObject pf nb nf)
+_NObject :: Prism' (NType d pf nb nf b f) (NObject d pf nb nf b f)
 _NObject = prism' NObject $ \case
    NObject n -> Just n
    _ -> Nothing
 
-_NCon :: Prism' (NType pf nb nf) TConstructor
-_NCon = prism' NCon $ \case
-  NCon d -> Just d
+_NCon :: Prism' (NType d pf nb nf b f) (TConstructor, Args d pf nb nf b f)
+_NCon = prism' (uncurry NCon) $ \case
+  NCon d a -> Just (d, a)
   _ -> Nothing
 
-_Mon :: Prism' (NType pf nb nf) (PType pf nb nf)
+_Mon :: Prism' (NType d pf nb nf b f) (PType d pf nb nf b f)
 _Mon = prism' Mon $ \case
   Mon d -> Just d
   _ -> Nothing
 
-data NType pf nb nf
-  = Fun (PType pf nb nf) (NType pf nb nf)
+data NType def pf nb nf b f
+  = Fun (PType def pf nb nf b f) (NType def pf nb nf b f)
     -- ^ Functions, so far not dependent
-  | Forall nb (NType pf nb nf)
+  | Forall nb (NType def pf nb nf b f)
   | NVar nf
-  | NCon TConstructor -- [NType pf nb nf]
-  | NObject (NObject pf nb nf)
-  | Mon (PType pf nb nf)
+  | NCon TConstructor (Args def pf nb nf b f)
+  | NObject (NObject def pf nb nf b f)
+  | Mon (PType def pf nb nf b f)
   deriving (Show, Eq)
 
 data TLit = TInt | TString
   deriving (Show, Eq)
 
-type PCoProduct pf nb nf = Map Constructor (PType pf nb nf)
-type PStruct pf nb nf = Vector (PType pf nb nf)
+type PCoProduct def pf nb nf b f = Map Constructor (PType def pf nb nf b f)
+type PStruct def pf nb nf b f = Vector (PType def pf nb nf b f)
 
-_PCon :: Prism' (PType pf nb nf) TConstructor
-_PCon = prism' PCon $ \case
-  PCon d -> Just d
+_PCon :: Prism' (PType d pf nb nf b f) (TConstructor, Args d pf nb nf b f)
+_PCon = prism' (uncurry PCon) $ \case
+  PCon d a -> Just (d,a)
   _ -> Nothing
 
-_PCoProduct :: Prism' (PType pf nb nf) (PCoProduct pf nb nf)
+_PCoProduct :: Prism' (PType d pf nb nf b f) (PCoProduct d pf nb nf b f)
 _PCoProduct = prism' PCoProduct $ \case
   PCoProduct d -> Just d
   _ -> Nothing
 
-_PStruct :: Prism' (PType pf nb nf) (PStruct pf nb nf)
+_PStruct :: Prism' (PType d pf nb nf b f) (PStruct d pf nb nf b f)
 _PStruct = prism' PStruct $ \case
   PStruct d -> Just d
   _ -> Nothing
 
-_Ptr :: Prism' (PType pf nb nf) (NType pf nb nf)
+_Ptr :: Prism' (PType d pf nb nf b f) (NType d pf nb nf b f)
 _Ptr = prism' Ptr $ \case
   Ptr d -> Just d
   _ -> Nothing
 
 
-data PType pf nb nf
-  = PCon TConstructor -- [NType pf nb nf]
-  | PCoProduct (PCoProduct pf nb nf)
-  | PStruct (PStruct pf nb nf)
+data PType def pf nb nf b f
+  = PCon TConstructor (Args def pf nb nf b f)
+  | PCoProduct (PCoProduct def pf nb nf b f)
+  | PStruct (PStruct def pf nb nf b f)
   | PVar pf
-  | Ptr (NType pf nb nf)
+  | Ptr (NType def pf nb nf b f)
   | PLit TLit
   deriving (Show, Eq)
 
-data CallFun defs free = CDef defs | CVar free deriving (Show)
-data Call defs pf nb nf bound free = Apply (CallFun defs free) (Args defs pf nb nf bound free) deriving (Show)
+data CallFun defs free = CDef defs | CVar free deriving (Show, Eq)
+data Call defs pf nb nf bound free = Apply (CallFun defs free) (Args defs pf nb nf bound free) deriving (Show, Eq)
 
 -- can infer
 data Act defs pf nb nf bound free
   = PutStrLn (Val defs pf nb nf bound free)
   | ReadLn
   | Call (Call defs pf nb nf bound free)
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- must check
 data CMonad defs pf nb nf bound free
@@ -111,23 +114,24 @@ data CMonad defs pf nb nf bound free
   deriving (Show)
 
 -- must check
-data Term defs pf nb nf bound free
-  = Do (CMonad defs pf nb nf bound free)
-  | Lam bound (Term defs pf nb nf bound free)
-  | TLam nb (Term defs pf nb nf bound free)
-  | Case free (Vector (Branch defs pf nb nf bound free))
-  | Split free (Vector bound) (Term defs pf nb nf bound free)
-  | Derefence free (Term defs pf nb nf bound free)
-  | New (Vector (CoBranch defs pf nb nf bound free))
+data Term mon defs pf nb nf bound free
+  = Do mon
+  | Lam bound (Term mon defs pf nb nf bound free)
+  | TLam nb (Term mon defs pf nb nf bound free)
+  | Case free (Vector (Branch mon defs pf nb nf bound free))
+  | Split free (Vector bound) (Term mon defs pf nb nf bound free)
+  | Derefence free (Term mon defs pf nb nf bound free)
+  | New (Vector (CoBranch mon defs pf nb nf bound free))
   | With (Call defs pf nb nf bound free) bound
-         (Term defs pf nb nf bound free) -- This allocates on the stack
-  | Let (Val defs pf nb nf bound free, PType pf nb nf) bound
-        (Term defs pf nb nf bound free) -- This allocates on the stack
+         (Term mon defs pf nb nf bound free) -- This allocates on the stack
+  | Let (Val defs pf nb nf bound free, PType defs pf nb nf bound free) bound
+        (Term mon defs pf nb nf bound free) -- This allocates on the stack
   deriving (Show)
 
-data Branch defs pf nb nf bound free = Branch Constructor (Term defs pf nb nf bound free)
+
+data Branch mon defs pf nb nf bound free = Branch Constructor (Term mon defs pf nb nf bound free)
   deriving (Show)
-data CoBranch defs pf nb nf bound free = CoBranch Projection (Term defs pf nb nf bound free)
+data CoBranch mon defs pf nb nf bound free = CoBranch Projection (Term mon defs pf nb nf bound free)
   deriving (Show)
 
 -- can infer
@@ -135,13 +139,13 @@ data Arg defs pf nb nf bound free
   = Push (Val defs pf nb nf bound free) -- maybe we want (CMonad) and auto-lift computations to closest Do-block
   -- Could have a run CMonad if it is guaranteed to be side-effect free (including free from non-termination aka it terminates)
   | Proj Projection
-  | Type (NType pf nb nf)
-  deriving (Show)
+  | Type (NType defs pf nb nf bound free)
+  deriving (Show, Eq)
 
 type Args defs pf nb nf bound free = Vector (Arg defs pf nb nf bound free)
 
 data Literal = LInt Int | LStr Text
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- must check
 data Val defs pf nb nf bound free
@@ -151,7 +155,7 @@ data Val defs pf nb nf bound free
   | Struct (Vector (Val defs pf nb nf bound free))
   | Thunk (Act defs pf nb nf bound free) -- or be monadic code?
   | ThunkVal (Val defs pf nb nf bound free)
-  deriving (Show)
+  deriving (Show, Eq)
 
 class Convert a b where
   convert :: a -> b
@@ -159,58 +163,64 @@ class Convert a b where
 instance Convert Binder Variable where
   convert (Binder x) = Variable x
 
-class SubstVal a where
-  substVal :: (free -> Val defs pf nb nf bound free') -> a defs pf nb nf bound free -> a defs pf nb nf bound free'
+class Subst a where
+  subst :: (free -> Val defs pf nb nf' bound free')
+        -> (nf   -> NType defs pf nb nf' bound free')
+        -> a defs pf nb nf bound free
+        -> a defs pf nb nf' bound free'
 
-substValOne :: (Eq free, SubstVal a) => free -> Val defs pf nb nf bound free -> a defs pf nb nf bound free -> a defs pf nb nf bound free
+substVal :: Subst a => (free -> Val defs pf nb nf bound free') -> a defs pf nb nf bound free -> a defs pf nb nf bound free'
+substVal f = subst f NVar
+
+substValOne :: (Eq free, Subst a) => free -> Val defs pf nb nf bound free -> a defs pf nb nf bound free -> a defs pf nb nf bound free
 substValOne x v = substVal $ \ y -> if x == y then v else Var y
 
-instance SubstVal Arg where
-  substVal s (Push v) = Push (substVal s v)
-  substVal _ (Proj p) = Proj p -- change phantom type
-  substVal _ (Type n) = Type n
+substNType :: Subst a => (nf -> NType def pf nb nf' b f) -> a def pf nb nf b f -> a def pf nb nf' b f
+substNType f = subst Var f
 
-instance SubstVal Act where
-  substVal s (PutStrLn x) = PutStrLn $ substVal s x
-  substVal _ ReadLn = ReadLn
-  substVal s (Call (Apply (CDef d) as)) = Call $ Apply (CDef d) (fmap (substVal s) as)
-  substVal s (Call (Apply (CVar x) as)) = case s x of
-    Var y -> Call (Apply (CVar y) $ fmap (substVal s) as)
-    Thunk (Call (Apply c bs)) -> Call $ Apply c $ bs `mappend` fmap (substVal s) as
+substNTypeOne :: (Eq nf, Subst a) => nf -> NType def pf nb nf b f -> a def pf nb nf b f -> a def pf nb nf b f
+substNTypeOne x v = substNType $ \ y -> if x == y then v else NVar y
+
+instance Subst Arg where
+  subst sv sn (Push v) = Push (subst sv sn v)
+  subst _  _  (Proj p) = Proj p -- change phantom type
+  subst sv sn (Type n) = Type (subst sv sn n)
+
+instance Subst Act where
+  subst sv sn (PutStrLn x) = PutStrLn $ subst sv sn x
+  subst _  _  ReadLn = ReadLn
+  subst sv sn (Call (Apply (CDef d) as)) = Call $ Apply (CDef d) (fmap (subst sv sn) as)
+  subst sv sn (Call (Apply (CVar x) as)) = case sv x of
+    Var y -> Call (Apply (CVar y) $ fmap (subst sv sn) as)
+    Thunk (Call (Apply c bs)) -> Call $ Apply c $ bs `mappend` fmap (subst sv sn) as
     -- v | null as -> Return v
     _ -> error "Erroneous substitution"
 
-instance SubstVal CMonad where
-  substVal s (Act a) = Act $ substVal s a
-  substVal s (Return p) = Return $ substVal s p
-  substVal s (Bind m b k) = Bind (substVal s m) b (substVal s k)
+instance Subst CMonad where
+  subst sv sn (Act a) = Act $ subst sv sn a
+  subst sv sn (Return p) = Return $ subst sv sn p
+  subst sv sn (Bind m b k) = Bind (subst sv sn m) b (subst sv sn k)
 
-instance SubstVal Val where
-  substVal s (Var y) = s y
-  substVal _ (Lit l) = Lit l
-  substVal s (Con c v) = Con c (substVal s v)
-  substVal s (Struct xs) = Struct (fmap (substVal s) xs)
-  substVal s (Thunk r) = Thunk $ substVal s r
-  substVal s (ThunkVal r) = ThunkVal $ substVal s r
+instance Subst Val where
+  subst sv _n (Var y) = sv y
+  subst _v _n (Lit l) = Lit l
+  subst sv sn (Con c v) = Con c (subst sv sn v)
+  subst sv sn (Struct xs) = Struct (fmap (subst sv sn) xs)
+  subst sv sn (Thunk r) = Thunk $ subst sv sn r
+  subst sv sn (ThunkVal r) = ThunkVal $ subst sv sn r
 
-class SubstNType a where
-  substNType :: (nf -> NType pf nb nf') -> a pf nb nf -> a pf nb nf'
+instance Subst NType where
+  subst _v sn (NVar x) = sn x
+  subst sv sn (Fun p n) = Fun (subst sv sn p) (subst sv sn n)
+  subst sv sn (Forall b n) = Forall b (subst sv sn n) -- ?? why does this work ??
+  subst sv sn (NObject o) = NObject (fmap (subst sv sn) o)
+  subst sv sn (NCon c as) = NCon c $ fmap (subst sv sn) as
+  subst sv sn (Mon p)  = Mon (subst sv sn p)
 
-substNTypeOne :: (Eq nf, SubstNType a) => nf -> NType pf nb nf -> a pf nb nf -> a pf nb nf
-substNTypeOne x v = substNType $ \ y -> if x == y then v else NVar y
-
-
-instance SubstNType NType where
-  substNType s (NVar x) = s x
-  substNType s (Fun p n) = Fun (substNType s p) (substNType s n)
-  substNType s (Forall b n) = Forall b (substNType s n) -- ?? why does this work ??
-  substNType _ (NCon c) = NCon c
-  substNType s (Mon p)  = Mon (substNType s p)
-
-instance SubstNType PType where
-  substNType _ (PCon c) = PCon c
-  substNType _ (PLit l) = PLit l
-  substNType _ (PVar x) = PVar x
-  substNType s (Ptr n)  = Ptr (substNType s n)
-  substNType s (PStruct c) = PStruct (fmap (substNType s) c)
-  substNType s (PCoProduct c) = PCoProduct (fmap (substNType s) c)
+instance Subst PType where
+  subst sv sn (PCon c a) = PCon c $ fmap (subst sv sn) a
+  subst _v _n (PLit l) = PLit l
+  subst _v _n (PVar x) = PVar x
+  subst sv sn (Ptr n)  = Ptr (subst sv sn n)
+  subst sv sn (PStruct c) = PStruct (fmap (subst sv sn) c)
+  subst sv sn (PCoProduct c) = PCoProduct (fmap (subst sv sn) c)

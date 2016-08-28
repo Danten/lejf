@@ -13,8 +13,7 @@ import Syntax.Concrete
 import Syntax.Internal
 import Syntax.Common
 
-(<>) :: Monoid m => m -> m -> m
-(<>) = mappend
+import Utils
 
 data Doc = Atom Text | Group Int Doc | Doc :$$ Doc
          | Doc :<%> Doc | Doc :<%%> Doc | Doc :<> Doc
@@ -91,43 +90,55 @@ instance Pretty TLit where
   useParen _ = False
   {-# INLINE useParen #-}
 
-instance (Pretty pf, Pretty nb, Pretty nf) => Pretty (PType pf nb nf) where
+instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty f) => Pretty (PType d pf nb nf b f) where
   pretty (PVar v) = pretty v
   pretty (PLit l) = pretty l
-  pretty (PCon c) = pretty c -- :<> args as
+  pretty (PCon c as) = pretty c :<> args as
   pretty (PCoProduct xs) = "[" :<%> intersperse " | "  (fmap (\(c, x) -> pretty c :<%> ":" :<%> pretty x) (Map.toList xs)) :<%> "]"
   pretty (PStruct xs) = "(" :<> intersperse ", " (Vector.toList $ fmap pretty xs) :<> ")"
   pretty (Ptr n) = "Ptr" :<%> prettyParen n
 
   useParen (PVar{}) = False
   useParen (PLit l) = useParen l
-  useParen (PCon{}) = False -- not $ null as
+  useParen (PCon _ as) =  not $ null as
   useParen (PCoProduct{}) = False
   useParen (PStruct{}) = False
   useParen (Ptr{}) = True
   {-# INLINE useParen #-}
 
-instance (Pretty pf, Pretty nb, Pretty nf) => Pretty (NType pf nb nf) where
+instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty f) => Pretty (Kind d pf nb nf b f) where
+  pretty (KFun p n) = pretty p :<%> "->" :<%> pretty n
+  pretty (KForall b n) = "forall" :<%> pretty b <> "." :<%> pretty n
+  pretty (KObject xs) = "<" :<%> intersperse " & " (fmap (\(p, x) -> pretty p :<%> "as" :<%> pretty x) (Map.toList xs)) :<%> ">"
+  pretty (KVar v) = pretty v
+  pretty (KUniverse) = "Type"
+
+  useParen (KFun _ _) = True
+  useParen (KForall _ _) = True
+  useParen (KObject _) = False
+  useParen (KVar v) = useParen v
+  useParen (KUniverse) = False
+  {-# INLINE useParen #-}
+
+instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty f) => Pretty (NType d pf nb nf b f) where
   pretty (Fun p n) = pretty p :<%> "->" :<%> pretty n
   pretty (Forall b n) = "forall" :<%> pretty b <> "." :<%> pretty n
   pretty (NObject xs) = "<" :<%> intersperse " & " (fmap (\(p, x) -> pretty p :<%> "as" :<%> pretty x) (Map.toList xs)) :<%> ">"
-  pretty (NCon c) = pretty c
-  -- pretty (NCon c ns) = pretty c :<> args ns
+  pretty (NCon c ns) = pretty c :<> args ns
   pretty (NVar v) = pretty v
   pretty (Mon p) = "{" :<> pretty p :<> "}"
 
   useParen (Fun _ _) = True
   useParen (Forall _ _) = True
   useParen (NObject _) = False
-  useParen (NCon c) = useParen c
-  -- useParen (NCon _ as) = not $ null as
+  useParen (NCon _ as) = not $ null as
   useParen (NVar v) = useParen v
   useParen (Mon _) = False
   {-# INLINE useParen #-}
 
 instance (Pretty a, Pretty b) => Pretty (CallFun a b) where
   pretty (CDef q) = pretty q
-  pretty (CVar x) = pretty x
+  pretty (CVar x) = "*" :<> pretty x
 
   useParen (CDef q) = useParen q
   useParen (CVar x) = useParen x
@@ -150,14 +161,14 @@ instance (Pretty f, Pretty d, Pretty pf, Pretty nb, Pretty nf) => Pretty (Val d 
   pretty (Var x) = pretty x
   pretty (Lit l) = pretty l
   pretty (Con c xs) = pretty c :<%> prettyParen xs
-  pretty (Struct xs) = "(" :<> args xs :<> ")"
+  pretty (Struct xs) = "⦃" :<> intersperse ", " (Vector.toList $ fmap pretty xs) :<> "⦄"
   pretty (Thunk ct) = "Thunk{" :<> pretty ct :<> "}"
   pretty (ThunkVal ct) = "$" :<> prettyParen ct
 
   useParen (Var x) = useParen x
   useParen (Lit l) = useParen l
   useParen (Con _ _) = True
-  useParen (Struct xs) = not $ null xs
+  useParen (Struct _) = False
   useParen (Thunk _) = False
   useParen (ThunkVal _) = False
   {-# INLINE useParen #-}
@@ -204,18 +215,18 @@ instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty f) => Pretty (RHS d 
   useParen (Act a) = useParen a
 -}
 
-data Equation d pf nb nf b f
-  = Equation (Call d pf nb nf b f) (CMonad d pf nb nf b f)
-  | EqWith (Call d pf nb nf b f) (Call d pf nb nf b f) (Vector (Equation d pf nb nf b f))
-  | EqLet (Call d pf nb nf b f) (Val d pf nb nf b f, PType pf nb nf)
-          (Vector (Equation d pf nb nf b f))
+data Equation mon d pf nb nf b f
+  = Equation (Call d pf nb nf b f) mon -- (CMonad d pf nb nf b f)
+  | EqWith (Call d pf nb nf b f) (Call d pf nb nf b f) (Vector (Equation mon d pf nb nf b f))
+  | EqLet (Call d pf nb nf b f) (Val d pf nb nf b f, PType d pf nb nf b f)
+          (Vector (Equation mon d pf nb nf b f))
 
 splitLines :: Vector Doc -> Doc
 splitLines xs | null xs = ""
               | length xs == 1 = Vector.head xs
               | otherwise = foldr1 (:$$) xs
 
-equations :: (Eq f, Convert b f, Convert nb nf) => d -> Term d pf nb nf b f -> Vector (Equation d pf nb nf b f)
+equations :: (Eq f, Convert b f, Convert nb nf) => d -> Term mon d pf nb nf b f -> Vector (Equation mon d pf nb nf b f)
 equations name = go Vector.empty
   where
     append xs y = xs <> Vector.singleton y
@@ -244,8 +255,8 @@ instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty b, Pretty f) => Pret
   useParen (Return _) = True
   useParen (Bind _ _ _) = True
 
-instance (Pretty d,Pretty pf, Pretty nb, Pretty nf, Pretty b, Pretty f) => Pretty (Equation d pf nb nf b f) where
-  pretty (Equation c r) = pretty c :<%> "=" :<%> "do" :<%> "{" :<%> pretty r :<%> "}"
+instance (Pretty mon, Pretty d,Pretty pf, Pretty nb, Pretty nf, Pretty b, Pretty f) => Pretty (Equation mon d pf nb nf b f) where
+  pretty (Equation c r) = pretty c :<%> "=" :<%> pretty r
   pretty (EqWith ca r eqs) = Group 2 $ pretty ca :<%> "with" :<%> pretty r :$$ splitLines (fmap pretty eqs)
   pretty (EqLet ca (v,p) eqs) = Group 2 $ pretty ca :<%> "let"
     :<%> pretty v :<%> ":" :<%> pretty p
@@ -284,8 +295,10 @@ instance Pretty ModuleOps where
 
 instance (Pretty nb, Pretty pf, Pretty nf, Pretty pb, Eq f, Convert b f, Pretty b,Pretty f, Convert nb nf)
   => Pretty (Decl pb pf nb nf b f) where
-  pretty (DData name ty) = "data" :<%> pretty name :<%> "=" :<%> pretty ty :$$ ""
-  pretty (CoData name ty) = "codata" :<%> pretty name :<%> "=" :<%> pretty ty :$$ ""
+  pretty (DData name ki ty) = Group 2 $ "data" :<%> pretty name :<%> ":" :<%> pretty ki :$$
+    pretty (equations name ty)
+  pretty (CoData name ki ty) = Group 2 $ "codata" :<%> pretty name :<%> ":" :<%> pretty ki :$$
+    pretty (equations name ty)
   pretty (Module ns) = prettyNs "module" args ns
   pretty (Template ns) = prettyNs "template" args ns
   pretty (Specialise name temp tybinds _tele ren) =
