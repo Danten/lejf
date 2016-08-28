@@ -6,8 +6,8 @@ import Data.Text()
 import qualified Data.Text.IO as Text
 import Data.Vector as V
 
-import Syntax.Concrete
 import Syntax.Common
+import Syntax.Decl
 import Syntax.Internal
 import Syntax.Pretty
 

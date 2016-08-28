@@ -2,7 +2,7 @@ module Types.Collect where
 
 import qualified Data.Map as Map
 import Syntax.Common
-import Syntax.Concrete
+import Syntax.Decl
 import Types.TC
 
 collectDecl :: Decl pb pf nb nf bound free -> Signature QName pf nb nf bound free

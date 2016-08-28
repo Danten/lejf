@@ -5,7 +5,7 @@ import Data.Foldable
 import qualified Data.Vector as V
 
 import Syntax.Common
-import Syntax.Concrete
+import Syntax.Decl
 import Syntax.Internal
 import Syntax.Subst
 

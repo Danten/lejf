@@ -2,7 +2,7 @@ module Types where
 
 import qualified Data.Text.IO as Text
 
-import Syntax.Concrete (Program)
+import Syntax.Decl (Program)
 import Syntax.Pretty (Pretty)
 
 import qualified Types.Collect as Collect

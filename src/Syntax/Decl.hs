@@ -1,4 +1,4 @@
-module Syntax.Concrete where
+module Syntax.Decl where
 
 import Data.Vector
 

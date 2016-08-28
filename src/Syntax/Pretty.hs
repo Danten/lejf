@@ -10,7 +10,7 @@ import qualified Data.Vector as Vector
 import Data.Vector (Vector)
 
 import Syntax.Common
-import Syntax.Concrete
+import Syntax.Decl
 import Syntax.Internal
 import Syntax.Subst
 
