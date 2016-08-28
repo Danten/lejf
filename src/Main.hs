@@ -73,7 +73,10 @@ test = Program $ Namespace qmain () V.empty decls
           ]
     nswapD = DDef qnswap (Fun (Ptr npairt) npairt) $
           Lam (Binder "x") $
-          Do $ Act $ Call $ Apply (CDef qswap) $ V.fromList [Type $ Mon natt, Type $ Mon natt, Push $ Var $ Variable "x"]
+          New $ V.fromList
+          [ CoBranch pfst $ Do $ Act $ Call (Apply (CVar $ Variable "x") $ V.singleton (Proj psnd))
+          , CoBranch psnd $ Do $ Act $ Call (Apply (CVar $ Variable "x") $ V.singleton (Proj pfst))
+          ]
     na = NVar (Variable "α")
     nb = NVar (Variable "β")
     natt = PCon (TConstructor qnat) V.empty

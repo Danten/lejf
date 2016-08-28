@@ -9,9 +9,10 @@ import Data.Text (Text)
 import qualified Data.Vector as Vector
 import Data.Vector (Vector)
 
+import Syntax.Common
 import Syntax.Concrete
 import Syntax.Internal
-import Syntax.Common
+import Syntax.Subst
 
 import Utils
 
