@@ -12,6 +12,7 @@ import           Syntax.Subst
 
 import           Types.Errors
 import           Types.TC
+import           Types.Utils
 
 import           Utils
 
@@ -21,7 +22,7 @@ tcLit l@(LInt _) p = abort $ InferedDon'tMatchChecked (PT_Lit l) (Positive $ PLi
 tcLit (LStr _) (PLit TString) = return ()
 tcLit l@(LStr _) p = abort $ InferedDon'tMatchChecked (PT_Lit l) (Positive $ PLit TString) (Positive p)
 
-tcVal :: (Ord free, Ord defs, Eq pf, Eq nb, Ord nf, Convert nb nf, Convert bound free)
+tcVal :: (Ord free, Ord defs, Ord pf, Ord nb, Ord nf, Convert nb nf, Convert bound free)
       => Val defs pf nb nf bound free -> PType defs pf nb nf bound free  -> TC defs pf nb nf bound free ()
 tcVal (Var x) p = do
   p' <- lookupContext x
@@ -45,7 +46,7 @@ tcVal v@(Struct vs) p = do
     then sequence_ (V.zipWith tcVal vs ps)
     else abort $ StructArityMisMatch vs ps
 
-tcArg :: (Ord free, Ord defs, Eq pf, Eq nb, Ord nf, Convert nb nf, Convert bound free)
+tcArg :: (Ord free, Ord defs, Ord pf, Ord nb, Ord nf, Convert nb nf, Convert bound free)
       => Arg defs pf nb nf bound free -> NType defs pf nb nf bound free
       -> TC defs pf nb nf bound free (NType defs pf nb nf bound free)
 tcArg (Push v) n_orig = do
@@ -59,7 +60,7 @@ tcArg (Type m) n_orig = do
   (b, n) <- unpackNeg _Forall n_orig undefined
   pure $ substNTypeOne (convert b) m n
 
-tcArgs :: (Ord free, Ord defs, Eq pf, Eq nb, Ord nf, Convert nb nf, Convert bound free)
+tcArgs :: (Ord free, Ord defs, Ord pf, Ord nb, Ord nf, Convert nb nf, Convert bound free)
        => Args defs pf nb nf bound free -> NType defs pf nb nf bound free
        -> TC defs pf nb nf bound free (NType defs pf nb nf bound free)
 tcArgs = go . toList
@@ -69,7 +70,7 @@ tcArgs = go . toList
       m' <- tcArg a m
       go as m'
 
-tcCall :: (Ord free, Ord defs, Eq pf, Eq nb, Ord nf, Convert nb nf, Convert bound free)
+tcCall :: (Ord free, Ord defs, Ord pf, Ord nb, Ord nf, Convert nb nf, Convert bound free)
        => Call defs pf nb nf bound free -> TC defs pf nb nf bound free (NType defs pf nb nf bound free)
 tcCall (Apply (CDef d) xs) = do
   n <- lookupDef d
@@ -79,7 +80,7 @@ tcCall (Apply (CVar x) xs) = do
   n <- unpackPos _Ptr p $ ShouldBeButIsA (PT_Var x) "pointer"
   tcArgs xs n
 
-tcAct :: (Ord free, Ord defs, Eq pf, Eq nb, Ord nf, Convert nb nf, Convert bound free)
+tcAct :: (Ord free, Ord defs, Ord pf, Ord nb, Ord nf, Convert nb nf, Convert bound free)
   =>Act defs pf nb nf bound free -> TC defs pf nb nf bound free (NType defs pf nb nf bound free)
 tcAct (Call ca) = tcCall ca
 tcAct (PutStrLn x) = do
@@ -87,7 +88,7 @@ tcAct (PutStrLn x) = do
   return $ Mon $ PStruct V.empty
 tcAct ReadLn = return $ Mon $ PLit TString
 
-tcMonad :: (Ord free, Ord defs, Eq pf, Eq nb, Ord nf, Convert nb nf, Convert bound free)
+tcMonad :: (Ord free, Ord defs, Ord pf, Ord nb, Ord nf, Convert nb nf, Convert bound free)
   => CMonad defs pf nb nf bound free -> NType defs pf nb nf bound free -> TC defs pf nb nf bound free ()
 tcMonad t@(Return r) n = do
   p <- unpackNeg _Mon n $ ShouldBeButIsA (PT_Mon t) "monadic"
@@ -100,7 +101,7 @@ tcMonad (Bind a b m) n = do
   p <- unpackNeg _Mon n' $ ShouldBeButIsA (PT_Act a) "monadic"
   local (addTele $ V.singleton (b,p)) (tcMonad m n)
 
-tcTerm :: (Ord free, Convert bound free,Ord defs, Eq pf, Eq nb, Ord nf, Convert nb nf)
+tcTerm :: (Ord free, Convert bound free,Ord defs, Ord pf, Ord nb, Ord nf, Convert nb nf)
        => Term (CMonad defs pf nb nf bound free) defs pf nb nf bound free -> NType defs pf nb nf bound free
        -> TC defs pf nb nf bound free ()
 tcTerm (Lam b t') n_orig = do
@@ -140,7 +141,7 @@ tcTerm (Let (v,p) b t) n = do
   local (addTele $ curry V.singleton b p) (tcTerm t n)
 
 
-tcDecl :: (Ord free , Eq pf, Eq nb, Ord nf, Convert bound free, Convert nb nf)
+tcDecl :: (Ord free , Ord pf, Ord nb, Ord nf, Convert bound free, Convert nb nf)
        => Decl pb pf nb nf bound free -> TC QName pf nb nf bound free ()
 tcDecl (DDef n nt t)  = local (\e -> e { nameOfTerm = n}) $ tcTerm t nt -- we should check that nt makes sense
 tcDecl (DData{})      = pure ()
@@ -149,7 +150,7 @@ tcDecl (Template ns)  = tcNameSpace (flip const) ns
 tcDecl (Module ns)    = tcNameSpace (flip const) ns
 tcDecl (Specialise{}) = fail "Not implemented tcDecl:Specialise"
 
-tcNameSpace :: (Ord free, Convert bound free, Convert nb nf, Eq pf, Eq nb, Ord nf)
+tcNameSpace :: (Ord free, Convert bound free, Convert nb nf, Ord pf, Ord nb, Ord nf)
             => (a -> Endo (Env QName pf nb nf bound free)) -> NameSpace a pb pf nb nf bound free -> TC QName pf nb nf bound free ()
 tcNameSpace up (Namespace _ t tele decls)
   = local (up t)
@@ -157,6 +158,6 @@ tcNameSpace up (Namespace _ t tele decls)
   $ traverse_ tcDecl decls
 
 tcProgram :: (Ord free, Convert bound free, Convert nb nf
-             , Eq pf, Eq nb, Ord nf)
+             , Ord pf, Ord nb, Ord nf)
           => Program pb pf nb nf bound free -> TC QName pf nb nf bound free ()
 tcProgram (Program ns) = tcNameSpace (const id) ns

@@ -1,10 +1,5 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RankNTypes            #-}
 module Types.TC where
-
-import           Control.Lens.Operators
-import           Control.Lens.Prism
-import           Control.Monad          (unless)
 
 import           Data.Map               (Map)
 import qualified Data.Map               as Map
@@ -12,12 +7,8 @@ import qualified Data.Map               as Map
 import           Data.Vector            (Vector)
 import qualified Data.Vector            as V
 
-import           Evaluate               (runEval)
-import qualified Evaluate               as Eval
-
 import           Syntax.Common
 import           Syntax.Internal
-import           Syntax.Subst
 
 import           Types.Errors
 
@@ -107,53 +98,3 @@ addTele tele env | V.null tele = env
                  | otherwise   = env {context = context env `Map.union` tele'}
   where
     tele' = Map.fromList $ V.toList $ fmap (\(x,p) -> (convert x,p))tele
-
-evaluateSubst :: (Ord nf, Convert nb nf, Ord f, Convert b f, Subst ty)
-  => Term (ty def pf nb nf b f) def pf nb nf b f
-  -> Args def pf nb nf b f
-  -> TC def pf nb nf b f (ty def pf nb nf b f)
-evaluateSubst t args = case runEval (Eval.evaluateSubst t args) of
-  Left e  -> abort $ EvaluationError e
-  Right x -> pure x
-
-make_unpackSubst :: (Ord nf, Convert nb nf, Ord f, Convert b f, Subst ty)
-  => (ty def pf nb nf b f -> TypeType def pf nb nf b f)
-  -> (Signature def pf nb nf b f
-  -> Map TConstructor (Term (ty def pf nb nf b f) def pf nb nf b f))
-  -> Prism' (ty def pf nb nf b f) (TConstructor, Args def pf nb nf b f)
-  -> Prism' (ty def pf nb nf b f) a
-  -> ty def pf nb nf b f
-  -> (TypeType def pf nb nf b f -> ErrorType def pf nb nf b f)
-  -> TC def pf nb nf b f a
-make_unpackSubst tyTy tType priCon pri ty_orig err = do
-  env <- reader (tType . sig)
-  let go path ty | Just (d,args) <- ty ^? priCon =
-         if d `elem` map fst path then abort $ TEvalCycle d path
-         else case Map.lookup d env of
-            Nothing -> abort $ NotInScope (NIS_TConstructor d)
-            Just term -> do
-              n <- evaluateSubst term args
-              go ((d, args):path) n
-      go path n | Just x <- n ^? pri = pure x
-                | otherwise = abort $ err (ByPath path $ tyTy n)
-  go [] ty_orig
-
-unpackPos :: (Ord nf, Convert nb nf, Ord f, Convert b f)
-  => Prism' (PType def pf nb nf b f) a -> PType def pf nb nf b f
-  -> (TypeType def pf nb nf b f -> ErrorType def pf nb nf b f)
-  -> TC def pf nb nf b f a
-unpackPos = make_unpackSubst Positive pconType _PCon
-
-unpackNeg :: (Ord nf, Convert nb nf, Ord f, Convert b f)
-  => Prism' (NType def pf nb nf b f) a -> NType def pf nb nf b f
-  -> (TypeType def pf nb nf b f -> ErrorType def pf nb nf b f)
-  -> TC def pf nb nf b f a
-unpackNeg = make_unpackSubst Negative nconType _NCon
-
-inferedIsCheckedNeg :: (Eq defs, Eq pf, Eq nb, Eq nf, Eq f)
-  => ProgType defs pf nb nf b f -> NType defs pf nb nf b f -> NType defs pf nb nf b f -> TC defs pf nb nf b f ()
-inferedIsCheckedNeg pa n n' = unless (n == n') $ abort $ InferedDon'tMatchChecked pa (Negative n) (Negative n')
-
-inferedIsCheckedPos :: (Eq defs, Eq pf, Eq nb, Eq nf, Eq f)
-  => ProgType defs pf nb nf b f -> PType defs pf nb nf b f -> PType defs pf nb nf b f -> TC defs pf nb nf b f ()
-inferedIsCheckedPos pa p p' = unless (p == p') $ abort $ InferedDon'tMatchChecked pa (Positive p) (Positive p')

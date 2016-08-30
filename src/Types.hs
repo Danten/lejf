@@ -13,7 +13,7 @@ import           Types.TC      (Env (Env), nameOfTerm, runTC')
 
 import           Utils         (Convert)
 
-runTC :: (Ord free, Ord nf, Eq pf, Eq nb, Convert bound free, Convert nb nf
+runTC :: (Ord free, Ord nf, Ord pf, Ord nb, Convert bound free, Convert nb nf
          , Pretty pf, Pretty nb, Pretty nf, Pretty bound, Pretty free)
       => Program pb pf nb nf bound free -> IO ()
 runTC m = case runTC' (Rules.tcProgram m) (Env mempty (Collect.collectProgram m) undefined) of

@@ -56,10 +56,10 @@ data NType def pf nb nf b f
   | NCon TConstructor (Args def pf nb nf b f)
   | NObject (NObject def pf nb nf b f)
   | Mon (PType def pf nb nf b f)
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 data TLit = TInt | TString
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 type PCoProduct def pf nb nf b f = Map Constructor (PType def pf nb nf b f)
 type PStruct def pf nb nf b f = Vector (PType def pf nb nf b f)
@@ -92,17 +92,17 @@ data PType def pf nb nf b f
   | PVar pf
   | Ptr (NType def pf nb nf b f)
   | PLit TLit
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
-data CallFun defs free = CDef defs | CVar free deriving (Show, Eq)
-data Call defs pf nb nf bound free = Apply (CallFun defs free) (Args defs pf nb nf bound free) deriving (Show, Eq)
+data CallFun defs free = CDef defs | CVar free deriving (Show, Eq, Ord)
+data Call defs pf nb nf bound free = Apply (CallFun defs free) (Args defs pf nb nf bound free) deriving (Show, Eq, Ord)
 
 -- can infer
 data Act defs pf nb nf bound free
   = PutStrLn (Val defs pf nb nf bound free)
   | ReadLn
   | Call (Call defs pf nb nf bound free)
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 -- must check
 data CMonad defs pf nb nf bound free
@@ -138,12 +138,12 @@ data Arg defs pf nb nf bound free
   -- Could have a run CMonad if it is guaranteed to be side-effect free (including free from non-termination aka it terminates)
   | Proj Projection
   | Type (NType defs pf nb nf bound free)
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 type Args defs pf nb nf bound free = Vector (Arg defs pf nb nf bound free)
 
 data Literal = LInt Int | LStr Text
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 -- must check
 data Val defs pf nb nf bound free
@@ -153,5 +153,5 @@ data Val defs pf nb nf bound free
   | Struct (Vector (Val defs pf nb nf bound free))
   | Thunk (Act defs pf nb nf bound free) -- or be monadic code?
   | ThunkVal (Val defs pf nb nf bound free)
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 

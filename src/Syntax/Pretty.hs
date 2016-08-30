@@ -109,7 +109,7 @@ instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty f) => Pretty (PType 
   {-# INLINE useParen #-}
 
 instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty f) => Pretty (Kind d pf nb nf b f) where
-  pretty (KFun p n) = pretty p :<%> "->" :<%> pretty n
+  pretty (KFun p n) = pretty p :<%> "→" :<%> pretty n
   pretty (KForall b n) = "forall" :<%> pretty b <> "." :<%> pretty n
   pretty (KObject xs) = "<" :<%> intersperse " & " (fmap (\(p, x) -> pretty p :<%> "as" :<%> pretty x) (Map.toList xs)) :<%> ">"
   pretty (KVar v) = pretty v
@@ -123,7 +123,7 @@ instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty f) => Pretty (Kind d
   {-# INLINE useParen #-}
 
 instance (Pretty d, Pretty pf, Pretty nb, Pretty nf, Pretty f) => Pretty (NType d pf nb nf b f) where
-  pretty (Fun p n) = pretty p :<%> "->" :<%> pretty n
+  pretty (Fun p n) = pretty p :<%> "→" :<%> pretty n
   pretty (Forall b n) = "forall" :<%> pretty b <> "." :<%> pretty n
   pretty (NObject xs) = "<" :<%> intersperse " & " (fmap (\(p, x) -> pretty p :<%> "as" :<%> pretty x) (Map.toList xs)) :<%> ">"
   pretty (NCon c ns) = pretty c :<> args ns
