@@ -301,8 +301,8 @@ instance (Pretty nb, Pretty pf, Pretty nf, Pretty pb, Eq f, Convert b f, Pretty 
     pretty (equations name ty)
   pretty (CoData name ki ty) = Group 2 $ "codata" :<%> pretty name :<%> ":" :<%> pretty ki :$$
     pretty (equations name ty)
-  pretty (Module ns) = prettyNs "module" args ns
-  pretty (Template ns) = prettyNs "template" args ns
+  pretty (Module ns) = prettyNs "module" "" ns
+  pretty (Template ns) = prettyNs "template" "" ns
   pretty (Specialise name temp tybinds _tele ren) =
     "module" :<%> pretty name :<%> pretty temp :<> args tybinds :<%%> pretty ren
   pretty (DDef name typ ter) =
@@ -312,13 +312,13 @@ instance (Pretty nb, Pretty pf, Pretty nf, Pretty pb, Eq f, Convert b f, Pretty 
   useParen _ = True
   {-# INLINE useParen #-}
 
-prettyNs :: (Eq f, Convert b f, Convert nb nf, Pretty b, Pretty f, Pretty pb, Pretty pf, Pretty nb, Pretty nf) => Text -> (tybinds -> Doc) -> PrettyT (NameSpace tybinds pb pf nb nf b f)
-prettyNs modu pArgs (Namespace name tybinds _telescope decls) = Group 2 $
-    Atom modu :<%> pretty name :<> pArgs tybinds :<%> "where" :$$
+prettyNs :: (Eq f, Convert b f, Convert nb nf, Pretty b, Pretty f, Pretty pb, Pretty pf, Pretty nb, Pretty nf) => Text -> Doc -> PrettyT (NameSpace pb pf nb nf b f)
+prettyNs modu pArgs (Namespace name decls) = Group 2 $
+    Atom modu :<%> pretty name :<> pArgs :<%> "where" :$$
       pretty decls
 
 instance (Eq f, Convert b f, Pretty b, Pretty f, Pretty pb, Pretty pf, Pretty nb, Pretty nf, Convert nb nf) => Pretty (Program pb pf nb nf b f) where
-  pretty (Program ns) = prettyNs "module" (\ () -> "") ns
+  pretty (Program ns) = prettyNs "module" "" ns
 
   useParen _ = True
   {-# INLINE useParen #-}

@@ -146,18 +146,17 @@ tcDecl :: (Ord free , Ord pf, Ord nb, Ord nf, Convert bound free, Convert nb nf)
 tcDecl (DDef n nt t)  = local (\e -> e { nameOfTerm = n}) $ tcTerm t nt -- we should check that nt makes sense
 tcDecl (DData{})      = pure ()
 tcDecl (CoData{})     = pure ()
-tcDecl (Template ns)  = tcNameSpace (flip const) ns
-tcDecl (Module ns)    = tcNameSpace (flip const) ns
+tcDecl (Template ns)  = tcNameSpace id ns
+tcDecl (Module ns)    = tcNameSpace id ns
 tcDecl (Specialise{}) = fail "Not implemented tcDecl:Specialise"
 
 tcNameSpace :: (Ord free, Convert bound free, Convert nb nf, Ord pf, Ord nb, Ord nf)
-            => (a -> Endo (Env QName pf nb nf bound free)) -> NameSpace a pb pf nb nf bound free -> TC QName pf nb nf bound free ()
-tcNameSpace up (Namespace _ t tele decls)
-  = local (up t)
-  $ local (addTele tele)
+            => (Endo (Env QName pf nb nf bound free)) -> NameSpace pb pf nb nf bound free -> TC QName pf nb nf bound free ()
+tcNameSpace up (Namespace _ decls)
+  = local up
   $ traverse_ tcDecl decls
 
 tcProgram :: (Ord free, Convert bound free, Convert nb nf
              , Ord pf, Ord nb, Ord nf)
           => Program pb pf nb nf bound free -> TC QName pf nb nf bound free ()
-tcProgram (Program ns) = tcNameSpace (const id) ns
+tcProgram (Program ns) = tcNameSpace id ns

@@ -9,12 +9,13 @@ collectDecl :: Decl pb pf nb nf bound free -> Signature QName pf nb nf bound fre
 collectDecl (DData n _k ty) = Signature (Map.singleton (TConstructor n) ty) mempty mempty
 collectDecl (DDef n nt _) = Signature mempty mempty (Map.singleton n nt)
 collectDecl (CoData n _k ty) = Signature mempty (Map.singleton (TConstructor n) ty) mempty
-collectDecl (Template{}) = mempty
-collectDecl (Module{}) = mempty
+collectDecl (Template ns) = collectNameSpace ns
+collectDecl (Module ns) = collectNameSpace ns
 collectDecl (Specialise{}) = mempty
 
-collectNameSpace :: NameSpace a pb pf nb nf bound free -> Signature QName pf nb nf bound free
-collectNameSpace (Namespace _ _ _ decls) = foldMap collectDecl decls
+-- Could be in parallel
+collectNameSpace :: NameSpace pb pf nb nf bound free -> Signature QName pf nb nf bound free
+collectNameSpace (Namespace _ decls) = foldMap collectDecl decls
 
 collectProgram :: Program pb pf nb nf bound free -> Signature QName pf nb nf bound free
 collectProgram (Program ns) = collectNameSpace ns

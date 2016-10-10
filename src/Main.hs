@@ -13,27 +13,18 @@ import           Syntax.Pretty
 
 import           Types
 
-test :: Program Binder Variable Binder Variable Binder Variable
-test = Program $ Namespace qmain () V.empty decls
+type Normal d = d Binder Variable Binder Variable Binder Variable
+
+natModule :: Normal Decl
+natModule = Module $ Namespace qnat decls
   where
-    qmain = QName [] "Main"
-    qid = QName ["Main"] "id"
-    qid2 = QName ["Main"] "id2"
-    qid3 = QName ["Main"] "id3"
-    qdbl = QName ["Main"] "double"
+    decls = V.fromList [natD, idD, idD2, idD3, dblD]
+    natt = PCon (TConstructor qnat) V.empty
     qnat = QName ["Main"] "Nat"
-    qnpair = QName ["Main"] "NPair"
-    qpair = QName ["Main"] "Pair"
-    qswap = QName ["Main"] "swap"
-    qnswap = QName ["Main"] "nat-swap"
-    qVector = QName ["Main"] "Vector"
-    qTestVector = QName ["Main"] "Test::Vector"
+    natD = DData qnat KUniverse $ Do $ PCoProduct $ Map.fromList [(czer, PStruct V.empty), (csuc, Ptr $ Mon natt)]
     csuc = Constructor $ QName ["Main", "Nat"] "Suc"
     czer = Constructor $ QName ["Main", "Nat"] "Zero"
-    pfst = Projection $ QName ["Main", "Nat"] "fst"
-    psnd = Projection $ QName ["Main", "Nat"] "snd"
-    nil = Struct V.empty
-    natD = DData qnat KUniverse $ Do $ PCoProduct $ Map.fromList [(czer, PStruct V.empty), (csuc, Ptr $ Mon natt)]
+    qid = QName ["Main"] "id"
     idD = DDef qid (Fun natt (Mon natt)) $
          Lam (Binder "n") $
          Case (Variable "n") $ V.fromList
@@ -41,6 +32,7 @@ test = Program $ Namespace qmain () V.empty decls
          , Branch csuc
             $ Do $ Return $ Con csuc $ Var $ Variable "n"
          ]
+    qid2 = QName ["Main"] "id2"
     idD2 = DDef qid2 (Fun natt (Mon natt)) $
          Lam (Binder "n") $
          Case (Variable "n") $ V.fromList
@@ -48,6 +40,7 @@ test = Program $ Namespace qmain () V.empty decls
          , Branch csuc
             $ Do $ Return $ Con csuc $ Thunk $ Call (Apply (CVar $ Variable "n") V.empty)
          ]
+    qid3 = QName ["Main"] "id3"
     idD3 = DDef qid3 (Fun natt (Mon natt)) $
          Lam (Binder "n") $
          Case (Variable "n") $ V.fromList
@@ -56,6 +49,7 @@ test = Program $ Namespace qmain () V.empty decls
             $ With (Apply (CDef qid3) $ V.singleton (Push $ Var $ Variable $ "n")) (Binder "r")
             $ Do $ Return $ Con csuc $ Var $ Variable "r"
          ]
+    qdbl = QName ["Main"] "double"
     dblD = DDef qdbl (Fun natt (Mon natt)) $
          Lam (Binder "n") $
          Case (Variable "n") $ V.fromList
@@ -64,6 +58,25 @@ test = Program $ Namespace qmain () V.empty decls
             $ With (Apply (CDef qdbl) $ V.singleton (Push $ Var $ Variable $ "n")) (Binder "r")
             $ Do $ Return $ Con csuc $ ThunkVal $ Con csuc $ Var $ Variable "r"
          ]
+    nil = Struct V.empty
+
+
+test :: Program Binder Variable Binder Variable Binder Variable
+test = Program $ Namespace qmain decls
+  where
+    qmain = QName [] "Main"
+    qnpair = QName ["Main"] "NPair"
+    qpair = QName ["Main"] "Pair"
+    qswap = QName ["Main"] "swap"
+    qnswap = QName ["Main"] "nat-swap"
+    qVector = QName ["Main"] "Vector"
+    qTestVector = QName ["Main"] "Test::Vector"
+    pfst = Projection $ QName ["Main", "Pair"] "fst"
+    psnd = Projection $ QName ["Main", "Pair"] "snd"
+    qnat = QName ["Main"] "Nat"
+    natt = PCon (TConstructor qnat) V.empty
+    csuc = Constructor $ QName ["Main", "Nat"] "Suc"
+    czer = Constructor $ QName ["Main", "Nat"] "Zero"
     swapD = DDef qswap (Forall (Binder "α") $ Forall (Binder "β") $ Fun (Ptr (pairt na nb)) (pairt nb na)) $
           TLam (Binder "α") $ TLam (Binder "β") $
           Lam (Binder "x") $
@@ -75,7 +88,6 @@ test = Program $ Namespace qmain () V.empty decls
           Do $ Act $ Call $ Apply (CDef qswap) $ V.fromList [Type $ Mon natt, Type $ Mon natt]
     na = NVar (Variable "α")
     nb = NVar (Variable "β")
-    natt = PCon (TConstructor qnat) V.empty
     pairD = CoData qpair (KForall (Binder "α") $ KForall (Binder "β") KUniverse)
       $ TLam (Binder "α") $ TLam (Binder "β")
       $ Do $ NObject $ Map.fromList [(pfst, NVar (Variable "α")),(psnd, NVar (Variable "β"))]
@@ -94,7 +106,7 @@ test = Program $ Namespace qmain () V.empty decls
                                           [ThunkVal $ Con csuc $ ThunkVal $ Con czer $ Struct V.empty
                                           ,Struct V.empty
                                           ]]
-    decls = V.fromList [natD , idD, idD2, idD3,dblD,pairD,npairD,swapD,nswapD, vectorD, testVector]
+    decls = V.fromList [natModule,pairD,npairD,swapD,nswapD, vectorD, testVector]
 
 main :: IO ()
 main = do
