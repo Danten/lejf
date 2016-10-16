@@ -9,64 +9,65 @@ import qualified Data.Text       as Text
 
 import           Syntax.Common
 import           Syntax.Internal
-import           Syntax.Pretty   (Pretty)
+import           Syntax.Pretty   ()
 
 import qualified Syntax.Pretty   as Pretty
 
 import           Utils
 
-data Error env def pf nb nf bound free
-  = Error (env def pf nb nf bound free) (ErrorType def pf nb nf bound free)
+data Error env
+  = Error env ErrorType
 
-data ProgType def pf nb nf bound free
-  = PT_Act (Act def pf nb nf bound free)
-  | PT_Mon (CMonad def pf nb nf bound free)
+data ProgType
+  = PT_Act Act
+  | PT_Call Call
+  | PT_Mon CMonad
   -- | PT_Term (Term def pf nb nf bound free)
   | PT_Equation
-  | PT_Val (Val def pf nb nf bound free)
+  | PT_Val Val
   | PT_Proj Projection
   | PT_Lit Literal
-  | PT_Var free
+  | PT_Var Variable
   | PT_Con Constructor
-  | PT_Def def
+  | PT_Def Definition
 
-type TypeEvaluationPath def pf nb nf b f = [(TConstructor, Args def pf nb nf b f)]
+type TypeEvaluationPath = [(TConstructor, Args)]
 
-data TypeType def pf nb nf b f
-  = Positive (PType def pf nb nf b f)
-  | ByPath (TypeEvaluationPath def pf nb nf b f) (TypeType def pf nb nf b f)
-  | Negative (NType def pf nb nf b f)
+data TypeType
+  = Positive PType
+  | ByPath TypeEvaluationPath TypeType
+  | Negative NType
 
-data NotInScope def pf nb nf bound free
-  = NIS_Constructor Constructor (PCoProduct def pf nb nf bound free)
+data NotInScope
+  = NIS_Constructor Constructor PCoProduct
   | NIS_TConstructor TConstructor
-  | NIS_Projection Projection (NObject def pf nb nf bound free)
-  | NIS_Def def
-  | NIS_Variable free
+  | NIS_Projection Projection NObject
+  | NIS_Def Definition
+  | NIS_Variable Variable
 
-data ErrorType def pf nb nf bound free
+data ErrorType
   = FromMonadFail String
-  | NotInScope (NotInScope def pf nb nf bound free)
-  | StructArityMisMatch (Vector (Val def pf nb nf bound free)) (Vector (PType def pf nb nf bound free))
-  | StructBoundArityMisMatch (Vector bound) (Vector (PType def pf nb nf bound free))
-  | ShouldBeButIsA (ProgType def pf nb nf bound free) Text (TypeType def pf nb nf bound free)
-  | PushArgumentToNoFun (Val def pf nb nf bound free) (TypeType def pf nb nf bound free)
-  | ProjArgumentToNoObject Projection (TypeType def pf nb nf bound free)
-  | TEvalCycle TConstructor (TypeEvaluationPath def pf nb nf bound free)
+  | NotInScope NotInScope
+  | StructArityMisMatch (Vector Val) (Vector PType)
+  | StructBoundArityMisMatch (Vector Binder) (Vector PType)
+  | ShouldBeButIsA ProgType Text TypeType
+  | PushArgumentToNoFun Val TypeType
+  | ProjArgumentToNoObject Projection TypeType
+  | TEvalCycle TConstructor TypeEvaluationPath
   | EvaluationError Text
-  | InferedDon'tMatchChecked (ProgType def pf nb nf bound free)
-        (TypeType def pf nb nf bound free)
-        (TypeType def pf nb nf bound free)
+  | InferedDon'tMatchChecked ProgType
+        TypeType
+        TypeType
 
-ttText :: (Pretty def, Pretty pf, Pretty nb, Pretty nf, Pretty f) => TypeType def pf nb nf b f -> Text
+ttText :: TypeType -> Text
 ttText (Positive p) = Pretty.pprint p
 ttText (Negative n) = Pretty.pprint n
 ttText (ByPath [] t) = ttText t
 ttText (ByPath ds tf) = foldr (\(n,a) t -> Pretty.pprint n <> Pretty.toText 0 (Pretty.args a) <> " ~> " <> t) (ttText tf) ds
 
-ptText :: (Pretty def, Pretty pf, Pretty nb, Pretty nf, Pretty b, Pretty f)
-       => ProgType def pf nb nf b f -> Text
+ptText :: ProgType -> Text
 ptText (PT_Act a)    = Pretty.pprint a
+ptText (PT_Call c)   = Pretty.pprint c
 ptText (PT_Proj p)   = Pretty.pprint p
 ptText (PT_Val v)    = Pretty.pprint v
 ptText (PT_Mon m)    = Pretty.pprint m
@@ -76,11 +77,10 @@ ptText (PT_Var x)    = Pretty.pprint x
 ptText (PT_Lit l)    = Pretty.pprint l
 ptText (PT_Equation) = "!EQUATION!"
 
-nisText :: (Pretty def) => NotInScope def pf nb nf b f-> Text
+nisText :: NotInScope -> Text
 nisText (NIS_Def d) = "definition «" <> Pretty.pprint d <> "»"
 
-errorType2Text :: (Pretty def, Pretty pf, Pretty nb, Pretty nf, Pretty bound, Pretty free)
-  => ErrorType def pf nb nf bound free -> Text
+errorType2Text :: ErrorType -> Text
 errorType2Text (FromMonadFail s) = Text.pack s
 errorType2Text (TEvalCycle c cs) = "Cycle detected when evaluating «" <> Pretty.pprint c <> "»\n" <>
   "evaluation causes the following path" <> foldr (\(d,as) r -> Pretty.pprint (PCon d as) <> " ~> " <> r) "" cs
@@ -103,7 +103,6 @@ errorType2Text (ShouldBeButIsA p desc t) = "The program is not of the correct ty
   <> "the term «" <> ptText p <> "» builds " <> desc
 errorType2Text (EvaluationError e) = e
 
-error2Text :: (Pretty def, Pretty pf, Pretty nb, Pretty nf, Pretty b, Pretty f)
-  => (env def pf nb nf b f -> QName) -> Error env def pf nb nf b f -> Text
+error2Text :: (env -> QName) -> Error env -> Text
 error2Text nameOfTerm (Error env t)
   = let QName root loc = nameOfTerm env in foldr (\x y -> x `mappend`"." `mappend` y) loc root `mappend` ": " `mappend` errorType2Text t

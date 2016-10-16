@@ -1,4 +1,5 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase      #-}
+{-# LANGUAGE PatternSynonyms #-}
 module Syntax.Internal where
 
 import           Control.Lens.Prism
@@ -11,147 +12,181 @@ import           Syntax.Common
 
 -- Would like to merge this with NType, but difficult to give a unifying type for Mon
 -- Adding an extra type argument breaks a lot of stuff, and we then need to rethink Subst
-data Kind def pf nb nf b f
-  = KFun (PType def pf nb nf b f) (Kind def pf nb nf b f)
-  | KForall nb (Kind def pf nb nf b f)
-  | KVar nf
-  | KObject (KObject def pf nb nf b f)
+data Kind
+  = KFun PType Kind
+  | KForall NTBinder Kind
+  | KVar NTVariable
+  | KObject KObject
   | KUniverse
   deriving (Show, Eq)
 
 type Object = Map Projection
-type KObject def pf nb nf b f = Object (Kind def pf nb nf b f)
-type NObject def pf nb nf b f = Object (NType def pf nb nf b f)
+type KObject = Object Kind
+type NObject = Object NType
 
-_Fun :: Prism' (NType d pf nb nf b f) (PType d pf nb nf b f, NType d pf nb nf b f)
+_Fun :: Prism' NType (PType, NType)
 _Fun = prism' (uncurry Fun) $ \case
    Fun p n -> Just (p, n)
    _ -> Nothing
 
-_Forall :: Prism' (NType d pf nb nf b f) (nb, NType d pf nb nf b f)
+_Forall :: Prism' NType (NTBinder, NType)
 _Forall = prism' (uncurry Forall) $ \case
    Forall p n -> Just (p, n)
    _ -> Nothing
 
-_NObject :: Prism' (NType d pf nb nf b f) (NObject d pf nb nf b f)
+_NObject :: Prism' NType NObject
 _NObject = prism' NObject $ \case
    NObject n -> Just n
    _ -> Nothing
 
-_NCon :: Prism' (NType d pf nb nf b f) (TConstructor, Args d pf nb nf b f)
+_NCon :: Prism' NType (TConstructor, Args)
 _NCon = prism' (uncurry NCon) $ \case
   NCon d a -> Just (d, a)
   _ -> Nothing
 
-_Mon :: Prism' (NType d pf nb nf b f) (PType d pf nb nf b f)
+_Mon :: Prism' NType PType
 _Mon = prism' Mon $ \case
   Mon d -> Just d
   _ -> Nothing
 
-data NType def pf nb nf b f
-  = Fun (PType def pf nb nf b f) (NType def pf nb nf b f)
+data NType
+  = Fun PType NType
     -- ^ Functions, so far not dependent
-  | Forall nb (NType def pf nb nf b f)
-  | NVar nf
-  | NCon TConstructor (Args def pf nb nf b f)
-  | NObject (NObject def pf nb nf b f)
-  | Mon (PType def pf nb nf b f)
+  | Forall NTBinder NType
+  | NVar NTVariable
+  | NCon TConstructor Args
+  | NObject NObject
+  | Mon PType
   deriving (Show, Eq, Ord)
 
 data TLit = TInt | TString
   deriving (Show, Eq, Ord)
 
-type PCoProduct def pf nb nf b f = Map Constructor (PType def pf nb nf b f)
-type PStruct def pf nb nf b f = Vector (PType def pf nb nf b f)
+type PCoProduct = Map Constructor PType
+type PStruct = Vector PType
 
-_PCon :: Prism' (PType d pf nb nf b f) (TConstructor, Args d pf nb nf b f)
+_PCon :: Prism' PType (TConstructor, Args)
 _PCon = prism' (uncurry PCon) $ \case
   PCon d a -> Just (d,a)
   _ -> Nothing
 
-_PCoProduct :: Prism' (PType d pf nb nf b f) (PCoProduct d pf nb nf b f)
+_PCoProduct :: Prism' PType PCoProduct
 _PCoProduct = prism' PCoProduct $ \case
   PCoProduct d -> Just d
   _ -> Nothing
 
-_PStruct :: Prism' (PType d pf nb nf b f) (PStruct d pf nb nf b f)
+_PStruct :: Prism' PType PStruct
 _PStruct = prism' PStruct $ \case
   PStruct d -> Just d
   _ -> Nothing
 
-_Ptr :: Prism' (PType d pf nb nf b f) (NType d pf nb nf b f)
+_Ptr :: Prism' PType NType
 _Ptr = prism' Ptr $ \case
   Ptr d -> Just d
   _ -> Nothing
 
 
-data PType def pf nb nf b f
-  = PCon TConstructor (Args def pf nb nf b f)
-  | PCoProduct (PCoProduct def pf nb nf b f)
-  | PStruct (PStruct def pf nb nf b f)
-  | PVar pf
-  | Ptr (NType def pf nb nf b f)
+data PType
+  = PCon TConstructor Args
+  | PCoProduct PCoProduct
+  | PStruct PStruct
+  | PVar PTVariable
+  | Ptr NType
   | PLit TLit
   deriving (Show, Eq, Ord)
 
-data CallFun defs free = CDef defs | CVar free deriving (Show, Eq, Ord)
-data Call defs pf nb nf bound free = Apply (CallFun defs free) (Args defs pf nb nf bound free) deriving (Show, Eq, Ord)
+
+data CallFun = CDef Definition | CVar Variable deriving (Show, Eq, Ord)
+data Call = Apply CallFun Args deriving (Show, Eq, Ord)
+
+type TailCall = Call -- further checks should be done
 
 -- can infer
-data Act defs pf nb nf bound free
-  = PutStrLn (Val defs pf nb nf bound free)
+data Act
+  = PutStrLn Val
   | ReadLn
-  | Call (Call defs pf nb nf bound free)
   deriving (Show, Eq, Ord)
 
 -- must check
-data CMonad defs pf nb nf bound free
-  = Act (Act defs pf nb nf bound free)
-  | Return (Val defs pf nb nf bound free)
-  | Bind(Act defs pf nb nf bound free) bound (CMonad defs pf nb nf bound free)
+data CMonad
+  = Act Act
+  | TCall TailCall
+  | Return Val
+  | CLeftTerm (LeftTerm CMonad)
+  | Bind Act Binder CMonad
+  | With Call Binder CMonad -- This allocates on the stack
   deriving (Show)
 
 -- must check
-data Term mon defs pf nb nf bound free
+data Term mon
   = Do mon
-  | Lam bound (Term mon defs pf nb nf bound free)
-  | TLam nb (Term mon defs pf nb nf bound free)
-  | Case free (Vector (Branch mon defs pf nb nf bound free))
-  | Split free (Vector bound) (Term mon defs pf nb nf bound free)
-  | Derefence free (Term mon defs pf nb nf bound free)
-  | New (Vector (CoBranch mon defs pf nb nf bound free))
-  | With (Call defs pf nb nf bound free) bound
-         (Term mon defs pf nb nf bound free) -- This allocates on the stack
-  | Let (Val defs pf nb nf bound free, PType defs pf nb nf bound free) bound
-        (Term mon defs pf nb nf bound free) -- This allocates on the stack
+  | RightTerm (RightTerm (Term mon))
+  | LeftTerm (LeftTerm (Term mon))
+ -- Explicit substitution, not sure yet I want this
+ -- | Let (ValSimple (ActSimple (CallSimple defs (Args nty defs free) free) free) free, PType defs pf nb nf bound free) bound
+ --      (Term mon defs pf nb nf bound free) -- This allocates on the stack
   deriving (Show)
 
-
-data Branch mon defs pf nb nf bound free = Branch Constructor (Term mon defs pf nb nf bound free)
+-- introduction for negatives,
+-- (maybe it should have the CDef cut here)
+data RightTerm cont
+  = Lam Binder cont
+  | TLam NTBinder cont
+  | New (Vector (CoBranch cont))
   deriving (Show)
-data CoBranch mon defs pf nb nf bound free = CoBranch Projection (Term mon defs pf nb nf bound free)
+
+pattern Lam' :: Binder -> Term mon -> Term mon
+pattern Lam' b t = RightTerm (Lam b t)
+
+pattern TLam' :: NTBinder -> Term mon -> Term mon
+pattern TLam' b t = RightTerm (TLam b t)
+
+pattern New' :: Vector (CoBranch (Term mon)) -> Term mon
+pattern New' bs = RightTerm (New bs)
+
+-- elimination for positives + Cuts
+--(maybe it should just have CVar -calls)
+data LeftTerm cont
+  = Case Variable (Vector (Branch cont))
+  | Split Variable (Vector Binder) cont
+  | Derefence Variable cont
+  deriving (Show)
+
+pattern Case' :: Variable -> (Vector (Branch (Term mon))) -> Term mon
+pattern Case' v bs = LeftTerm (Case v bs)
+
+pattern Split' :: Variable -> Vector Binder -> Term mon -> Term mon
+pattern Split' v bs t = LeftTerm (Split v bs t)
+
+pattern Derefence' :: Variable -> Term mon -> Term mon
+pattern Derefence' v t = LeftTerm (Derefence v t)
+
+data Branch cont = Branch Constructor cont
+  deriving (Show)
+data CoBranch cont = CoBranch Projection cont
   deriving (Show)
 
 -- can infer
-data Arg defs pf nb nf bound free
-  = Push (Val defs pf nb nf bound free) -- maybe we want (CMonad) and auto-lift computations to closest Do-block
+data Arg
+  = Push Val -- maybe we want (CMonad) and auto-lift computations to closest Do-block
   -- Could have a run CMonad if it is guaranteed to be side-effect free (including free from non-termination aka it terminates)
   | Proj Projection
-  | Type (NType defs pf nb nf bound free)
+  | Type NType
   deriving (Show, Eq, Ord)
 
-type Args defs pf nb nf bound free = Vector (Arg defs pf nb nf bound free)
+-- type Arg defs pf nb nf bound free = ArgSimple
+
+type Args = Vector Arg
 
 data Literal = LInt Int | LStr Text
   deriving (Show, Eq, Ord)
 
 -- must check
-data Val defs pf nb nf bound free
-  = Var free
+data Val
+  = Var Variable
   | Lit Literal
-  | Con Constructor (Val defs pf nb nf bound free)
-  | Struct (Vector (Val defs pf nb nf bound free))
-  | Thunk (Act defs pf nb nf bound free) -- or be monadic code?
-  | ThunkVal (Val defs pf nb nf bound free)
+  | Con Constructor Val
+  | Struct (Vector Val)
+  | Thunk Call -- or be monadic code?
+  | ThunkVal Val
   deriving (Show, Eq, Ord)
-

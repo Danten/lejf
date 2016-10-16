@@ -1,23 +1,23 @@
 module Syntax.Subst where
 
+import           Syntax.Common
 import           Syntax.Internal
 
 class Subst a where
-  subst :: (free -> Val defs pf nb nf' bound free')
-        -> (nf   -> NType defs pf nb nf' bound free')
-        -> a defs pf nb nf bound free
-        -> a defs pf nb nf' bound free'
+  subst :: (Variable -> Val)
+        -> (NTVariable -> NType)
+        -> a -> a
 
-substVal :: Subst a => (free -> Val defs pf nb nf bound free') -> a defs pf nb nf bound free -> a defs pf nb nf bound free'
+substVal :: Subst a => (Variable -> Val) -> a -> a
 substVal f = subst f NVar
 
-substValOne :: (Eq free, Subst a) => free -> Val defs pf nb nf bound free -> a defs pf nb nf bound free -> a defs pf nb nf bound free
+substValOne :: (Subst a) => Variable -> Val -> a -> a
 substValOne x v = substVal $ \ y -> if x == y then v else Var y
 
-substNType :: Subst a => (nf -> NType def pf nb nf' b f) -> a def pf nb nf b f -> a def pf nb nf' b f
+substNType :: Subst a => (NTVariable -> NType) -> a -> a
 substNType f = subst Var f
 
-substNTypeOne :: (Eq nf, Subst a) => nf -> NType def pf nb nf b f -> a def pf nb nf b f -> a def pf nb nf b f
+substNTypeOne :: (Subst a) => NTVariable -> NType -> a -> a
 substNTypeOne x v = substNType $ \ y -> if x == y then v else NVar y
 
 instance Subst Arg where
@@ -28,17 +28,19 @@ instance Subst Arg where
 instance Subst Act where
   subst sv sn (PutStrLn x) = PutStrLn $ subst sv sn x
   subst _  _  ReadLn = ReadLn
-  subst sv sn (Call (Apply (CDef d) as)) = Call $ Apply (CDef d) (fmap (subst sv sn) as)
-  subst sv sn (Call (Apply (CVar x) as)) = case sv x of
-    Var y -> Call (Apply (CVar y) $ fmap (subst sv sn) as)
-    Thunk (Call (Apply c bs)) -> Call $ Apply c $ bs `mappend` fmap (subst sv sn) as
+
+instance Subst Call where
+  subst sv sn (Apply (CDef d) as) = Apply (CDef d) (fmap (subst sv sn) as)
+  subst sv sn (Apply (CVar x) as) = case sv x of
+    Var y -> Apply (CVar y) $ fmap (subst sv sn) as
+    Thunk (Apply c bs) -> Apply c $ bs `mappend` fmap (subst sv sn) as
     -- v | null as -> Return v
     _ -> error "Erroneous substitution"
 
 instance Subst CMonad where
-  subst sv sn (Act a)      = Act $ subst sv sn a
-  subst sv sn (Return p)   = Return $ subst sv sn p
-  subst sv sn (Bind m b k) = Bind (subst sv sn m) b (subst sv sn k)
+  subst sv sn (Act a)    = Act $ subst sv sn a
+  subst sv sn (Return p) = Return $ subst sv sn p
+  -- subst sv sn (Bind m b k) = Bind (subst sv sn m) b (subst sv sn k)
 
 instance Subst Val where
   subst sv _n (Var y)      = sv y

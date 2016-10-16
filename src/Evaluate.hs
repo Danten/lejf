@@ -17,45 +17,46 @@ import           Syntax.Common
 import           Syntax.Internal
 import           Syntax.Subst
 
-import           Utils
-
-pickBranch :: Constructor -> Vector (Branch mon def pf nb nf b f) -> Eval def pf nb nf b f (Term mon def pf nb nf b f)
+pickBranch :: Constructor -> Vector (Branch mon) -> Eval mon
 pickBranch c bs = do
   let bs' = V.filter (\(Branch c' _) -> c == c') bs
   case bs' V.!? 0 of
     Just (Branch _ t) -> pure t
 
-evaluate :: (Ord nf, Convert nb nf, Ord f, Convert b f)
- => Term ty def pf nb nf b f -> Args def pf nb nf b f
- -> Eval def pf nb nf b f (ty, Env def pf nb nf b f)
-evaluate (Do p) args | null args = ask >>= \ e -> pure (p, e)
-                     | otherwise = fail "evaluate applied to too many arguments"
-evaluate (TLam b t) args = do
-  (arg , args') <- eval_pop args
-  n <- unpackType arg
-  bindType b n $ evaluate t args'
-evaluate (Lam b t) args = do
-  (arg, args') <- eval_pop args
-  p <- unpackPush arg
-  bindVal b p $ evaluate t args'
-evaluate (Case x bs) args = do
+evaluateL :: LeftTerm a -> (Variable -> Val -> a -> Eval b) -> Eval b
+evaluateL (Case x bs) cont = do
   (c,p) <- unpackCon x
   t <- pickBranch c bs
-  bindVal' x p $ evaluate t args
-evaluate (Derefence x t) args = do
+  cont x p t
+evaluateL (Derefence x t) cont = do
   p <- unpackThunkVal x
-  bindVal' x p $ evaluate t args
+  cont x p t
 
-evaluateSubst :: (Ord nf, Convert nb nf, Ord f, Convert b f, Subst ty)
-  => Term (ty def pf nb nf b f) def pf nb nf b f -> Args def pf nb nf b f
-  -> Eval def pf nb nf b f (ty def pf nb nf b f)
+evaluateR :: RightTerm a -> Arg -> (a -> Eval b) -> Eval b
+evaluateR (TLam b t) arg cont = do
+  n <- unpackType arg
+  bindType b n $ cont t
+evaluateR (Lam b t) arg cont = do
+  p <- unpackPush arg
+  bindVal b p $ cont t
+
+evaluate :: Term ty -> Args -> Eval (ty, Env)
+evaluate (Do p) args | null args = ask >>= \ e -> pure (p, e)
+                     | otherwise = fail "evaluate applied to too many arguments"
+evaluate (RightTerm t) args = do
+  (arg, args') <- eval_pop args
+  evaluateR t arg $ \t' -> evaluate t' args'
+evaluate (LeftTerm t) args = evaluateL t $ \x v t' -> do
+  bindVal' x v $ evaluate t' args
+
+evaluateSubst :: (Subst ty) => Term ty -> Args -> Eval ty
 evaluateSubst term args = do
   (ty, env) <- evaluate term args
   let valSubst free = fromMaybe (Var free) $ Map.lookup free (valEnv env)
       typSubst free = fromMaybe (NVar free) $ Map.lookup free (typEnv env)
   pure $ subst valSubst typSubst ty
 
-runEval :: Eval def pf nb nf b f a -> Either Text a
+runEval :: Eval a -> Either Text a
 runEval (Eval m) = case m (Env Map.empty Map.empty) of
   Left e  -> Left (error2Text e)
   Right x -> Right x

@@ -15,22 +15,22 @@ import           Types.Evaluate
 import           Types.TC
 import           Utils
 
-data EqSet def pf nb nf b f = EqSet
-  { pEqs :: Set (Dup (PType def pf nb nf b f))
-  , nEqs :: Set (Dup (NType def pf nb nf b f))
+data EqSet = EqSet
+  { pEqs :: Set (Dup PType)
+  , nEqs :: Set (Dup NType)
   }
 
-instance (Ord def, Ord pf, Ord nb, Ord nf, Ord f) => Monoid (EqSet def pf nb nf b f) where
+instance Monoid EqSet where
   mempty = EqSet mempty mempty
   e `mappend` e' = EqSet (pEqs e `mappend` pEqs e')
                          (nEqs e `mappend` nEqs e')
 
-newtype TC' def pf nb nf b f a = TC' { unTC' :: TC def pf nb nf b f (Maybe a)}
+newtype TC' a = TC' { unTC' :: TC (Maybe a)}
 
-instance Functor (TC' def pf nb nf b f) where
+instance Functor TC' where
   fmap f = TC' . fmap (fmap f) . unTC'
 
-instance Applicative (TC' def pf nb nf b f) where
+instance Applicative TC' where
   pure = TC' . pure . pure
   TC' f <*> TC' x = TC' $ do
     f' <- f
@@ -40,22 +40,22 @@ instance Applicative (TC' def pf nb nf b f) where
       x'' <- x'
       pure (f'' x'')
 
-instance Monad (TC' def pf nb nf b f) where
+instance Monad TC' where
   TC' tc >>= f = TC' $ do
     m <- tc
     case m of
       Nothing -> pure Nothing
       Just x  -> unTC' (f x)
 
-lift :: TC def pf nb nf b f a -> TC' def pf nb nf b f a
+lift :: TC a -> TC' a
 lift = TC' . fmap pure
 
-tcfail :: TC' def pf nb nf b f a
+tcfail :: TC' a
 tcfail = TC' (pure Nothing)
 
-type EqCheck ty def pf nb nf b f = Dup (ty def pf nb nf b f) -> EndoM (TC' def pf nb nf b f) (EqSet def pf nb nf b f)
+type EqCheck ty = Dup ty -> EndoM TC' EqSet
 
-negEq :: (Ord def, Ord pf, Ord nb, Ord nf, Ord f, Convert nb nf, Convert b f) => EqCheck NType def pf nb nf b f
+negEq :: EqCheck NType
 negEq st aOrig | st `Set.member` nEqs aOrig = pure aOrig
                | otherwise = uncurry go st (aOrig {nEqs = Set.insert st (nEqs aOrig)})
   where
@@ -80,7 +80,7 @@ negEq st aOrig | st `Set.member` nEqs aOrig = pure aOrig
         Right t' -> negEq (s, t') a
     go' _ _ _ = tcfail
 
-posEq :: (Ord def, Ord pf, Ord nb, Ord nf, Ord f, Convert nb nf, Convert b f) =>  EqCheck PType def pf nb nf b f
+posEq :: EqCheck PType
 posEq st aOrig | st `Set.member` pEqs aOrig = return aOrig
                | otherwise = uncurry go st (aOrig {pEqs = Set.insert st (pEqs aOrig)})
   where
@@ -105,10 +105,8 @@ posEq st aOrig | st `Set.member` pEqs aOrig = return aOrig
         Right p' -> posEq (p, p') a
     go' _ _ _ = tcfail
 
-checkNegEquality :: (Ord def, Ord pf, Ord nb, Ord nf, Ord f, Convert nb nf, Convert b f)
-  => NType def pf nb nf b f -> NType def pf nb nf b f -> TC def pf nb nf b f Bool
+checkNegEquality :: NType -> NType -> TC Bool
 checkNegEquality s t = isJust <$> unTC' (negEq (s,t) mempty)
 
-checkPosEquality :: (Ord def, Ord pf, Ord nb, Ord nf, Ord f, Convert nb nf, Convert b f)
-  => PType def pf nb nf b f -> PType def pf nb nf b f -> TC def pf nb nf b f Bool
+checkPosEquality :: PType -> PType -> TC Bool
 checkPosEquality s t = isJust <$> unTC' (posEq (s,t) mempty)
