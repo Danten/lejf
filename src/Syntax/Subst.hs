@@ -1,5 +1,7 @@
 module Syntax.Subst where
 
+import Data.Vector (Vector)
+
 import           Syntax.Common
 import           Syntax.Internal
 
@@ -20,6 +22,9 @@ substNType f = subst Var f
 substNTypeOne :: (Subst a) => NTVariable -> NType -> a -> a
 substNTypeOne x v = substNType $ \ y -> if x == y then v else NVar y
 
+instance Subst x => Subst (Vector x) where
+  subst sv sn = fmap (subst sv sn)
+
 instance Subst Arg where
   subst sv sn (Push v) = Push (subst sv sn v)
   subst _  _  (Proj p) = Proj p -- change phantom type
@@ -28,6 +33,7 @@ instance Subst Arg where
 instance Subst Act where
   subst sv sn (PutStrLn x) = PutStrLn $ subst sv sn x
   subst _  _  ReadLn = ReadLn
+  subst sv sn (Malloc p v) = Malloc (subst sv sn p) (subst sv sn v)
 
 instance Subst Call where
   subst sv sn (Apply (CDef d) as) = Apply (CDef d) (fmap (subst sv sn) as)
@@ -37,10 +43,21 @@ instance Subst Call where
     -- v | null as -> Return v
     _ -> error "Erroneous substitution"
 
+leftTerm :: (Variable -> Val) -> (NTVariable -> NType) -> LeftTerm CMonad -> CMonad
+leftTerm sv sn (Case x bs) = case sv x of
+  Var y -> CLeftTerm $ Case y (subst sv sn bs)
+  -- Should be in Eval monad
+
+instance Subst a => Subst (Branch a) where
+  subst sv sn (Branch b x) = Branch b (subst sv sn x) -- TODO fix captures
+
 instance Subst CMonad where
   subst sv sn (Act a)    = Act $ subst sv sn a
+  subst sv sn (TCall c)  = TCall $ subst sv sn c
   subst sv sn (Return p) = Return $ subst sv sn p
-  -- subst sv sn (Bind m b k) = Bind (subst sv sn m) b (subst sv sn k)
+  subst sv sn (Bind m b k) = Bind (subst sv sn m) b (subst sv sn k)
+  subst sv sn (With m b k) = With (subst sv sn m) b (subst sv sn k)
+  subst sv sn (CLeftTerm m) = leftTerm sv sn m
 
 instance Subst Val where
   subst sv _n (Var y)      = sv y

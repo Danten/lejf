@@ -79,6 +79,9 @@ tcAct (PutStrLn x) = do
   tcVal x (PLit TString)
   return $ Mon $ PStruct V.empty
 tcAct ReadLn = return $ Mon $ PLit TString
+tcAct (Malloc p x) = do
+  tcVal x p
+  return $ Mon $ p
 
 tcMonad :: CMonad -> NType -> TC ()
 tcMonad t@(Return r) n = do

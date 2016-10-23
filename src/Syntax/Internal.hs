@@ -105,6 +105,7 @@ type TailCall = Call -- further checks should be done
 data Act
   = PutStrLn Val
   | ReadLn
+  | Malloc PType Val
   deriving (Show, Eq, Ord)
 
 -- must check
